@@ -1,0 +1,5 @@
+#wandb files
+wandb/
+
+#Saved Models
+Models/
