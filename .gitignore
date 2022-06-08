@@ -3,3 +3,7 @@ wandb/
 
 #Saved Models
 Models/
+
+#Machine Output files
+machine*.file
+*.out

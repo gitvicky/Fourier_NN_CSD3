@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH -J FRNN_rbb
+#SBATCH -J FNO_MHD
 #SBATCH -A ukaea-ap001-gpu 
 #SBATCH --nodes=1
 #SBATCH --ntasks=4
@@ -37,13 +37,13 @@ conda activate torch_env_3
 
 
 #! Full path to application executable: 
-application="python /home/ir-gopa2/Code/Fourier_NNs/FRNN_rbb.py"
+application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/FNO_MHD_Multiple.py"
 
 #! Run options for the application:
 options=""
 
 #! Work directory (i.e. where the job will run):
-workdir="/home/ir-gopa2/Code/Fourier_NNs/"  # The value of SLURM_SUBMIT_DIR sets workdir to the directory
+workdir="/home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs"  # The value of SLURM_SUBMIT_DIR sets workdir to the directory
                              # in which sbatch is run.
 
 #! Are you using OpenMP (NB this is unrelated to OpenMPI)? If so increase this

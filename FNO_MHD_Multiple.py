@@ -31,7 +31,7 @@ configuration = {"Case": 'MHD - rho,phi,w',
                  "Noise":0.1}
 
 run = wandb.init(project='FNO',
-                 notes='',
+                 notes='Conv3D for the Input Space',
                  config=configuration,
                  mode='online')
 
@@ -42,7 +42,7 @@ wandb.save('FNO_MHD_Multiple.py')
 
 
 # %%
-
+import sys 
 import numpy as np
 from tqdm import tqdm 
 import torch
@@ -349,7 +349,7 @@ class AddGaussianNoise(object):
         self.std = self.std.cpu()
 
 additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
-additive_noise.cuda()
+# additive_noise.cuda()
 
 # %%
 
@@ -394,7 +394,7 @@ class SpectralConv2d_fast(nn.Module):
         #Return to physical space
         x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
         return x
-
+'''
   
 class SimpleBlock2d(nn.Module):
     def __init__(self, modes1, modes2, width):
@@ -432,7 +432,6 @@ class SimpleBlock2d(nn.Module):
         self.bn2 = torch.nn.BatchNorm3d(self.width)
         self.bn3 = torch.nn.BatchNorm3d(self.width)
 
-
         self.fc1 = nn.Linear(self.width, 128)
         self.fc2 = nn.Linear(128, 1)
   
@@ -465,6 +464,77 @@ class SimpleBlock2d(nn.Module):
       x = F.relu(x)
       x = self.fc2(x)
       return x
+'''
+
+#Changed the conv1d for conv3d - over the variables, and the spatial distribution of the fields. 
+class SimpleBlock2d(nn.Module):
+    def __init__(self, modes1, modes2, width):
+        super(SimpleBlock2d, self).__init__()
+
+        """
+        The overall network. It contains 4 layers of the Fourier layer.
+        1. Lift the input to the desire channel dimension by self.fc0 .
+        2. 4 layers of the integral operators u' = (W + K)(u).
+            W defined by self.w; K defined by self.conv .
+        3. Project from the channel space to the output space by self.fc1 and self.fc2 .
+        
+        input: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
+        input shape: (batchsize, x=64, y=64, c=12)
+        output: the solution of the next timestep
+        output shape: (batchsize, x=64, y=64, c=1)
+        """
+
+        self.modes1 = modes1
+        self.modes2 = modes2
+        self.width = width
+        self.fc0 = nn.Linear(T_in+2, self.width)
+        # input channel is 12: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
+
+        self.conv0 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+        self.conv1 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+        self.conv2 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+        self.conv3 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+        self.w0 = nn.Conv3d(self.width, self.width, 1)
+        self.w1 = nn.Conv3d(self.width, self.width, 1)
+        self.w2 = nn.Conv3d(self.width, self.width, 1)
+        self.w3 = nn.Conv3d(self.width, self.width, 1)
+        self.bn0 = torch.nn.BatchNorm3d(self.width)
+        self.bn1 = torch.nn.BatchNorm3d(self.width)
+        self.bn2 = torch.nn.BatchNorm3d(self.width)
+        self.bn3 = torch.nn.BatchNorm3d(self.width)
+
+        self.fc1 = nn.Linear(self.width, 128)
+        self.fc2 = nn.Linear(128, 1)
+  
+    def forward(self, x):
+      batchsize = x.shape[0]
+      size_x, size_y = x.shape[2], x.shape[3]
+
+      x = self.fc0(x)
+      x = x.permute(0, 4, 1, 2, 3)
+
+      x1 = self.conv0(x)
+      x2 = self.w0(x)
+      x = self.bn0(x1 + x2)
+      x = F.relu(x)
+      x1 = self.conv1(x)
+      x2 = self.w1(x)
+      x = self.bn1(x1 + x2)
+      x = F.relu(x)
+      x1 = self.conv2(x)
+      x2 = self.w2(x)
+      x = self.bn2(x1 + x2)
+      x = F.relu(x)
+      x1 = self.conv3(x)
+      x2 = self.w3(x)
+      x = self.bn3(x1 + x2)
+
+      x = x.permute(0, 2, 3, 4, 1)
+      x = self.fc1(x)
+      x = F.relu(x)
+      x = self.fc2(x)
+      return x
+
 
 class Net2d(nn.Module):
     def __init__(self, modes, width):
@@ -488,6 +558,8 @@ class Net2d(nn.Module):
             c += reduce(operator.mul, list(p.size()))
 
         return c
+
+        
 # %%
 
 
@@ -581,6 +653,8 @@ gridy = gridy.reshape(1, 1, 1, S, 1).repeat([1, num_vars, S, 1, 1])
 train_a = torch.cat((train_a, gridx.repeat([ntrain,1,1,1,1]), gridy.repeat([ntrain,1,1,1,1])), dim=-1)
 test_a = torch.cat((test_a, gridx.repeat([ntest,1,1,1,1]), gridy.repeat([ntest,1,1,1,1])), dim=-1)
 
+print(train_a.shape, train_u.shape)
+
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
 
@@ -612,8 +686,9 @@ gridy = gridy.to(device)
 
 # %%
 
+# sys.exit()
 epochs = configuration['Epochs']
-y_normalizer.cuda()
+# y_normalizer.cuda()
 
 start_time = time.time()
 for ep in tqdm(range(epochs)):
@@ -625,7 +700,7 @@ for ep in tqdm(range(epochs)):
         loss = 0
         xx = xx.to(device)
         yy = yy.to(device)
-        xx = additive_noise(xx)
+        # xx = additive_noise(xx)
 
         for t in range(0, T, step):
             y = yy[..., t:t + step]
