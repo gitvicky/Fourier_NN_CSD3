@@ -14,7 +14,7 @@ FNO modelled over the MHD data built using JOREK. All Variables together.
 import wandb
 configuration = {"Case": 'MHD - rho,phi,w',
                  "Type": '2D Time',
-                 "Epochs": 500,
+                 "Epochs": 5,
                  "Batch Size": 10,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.01,
@@ -25,13 +25,13 @@ configuration = {"Case": 'MHD - rho,phi,w',
                  "T_in": 20, 
                  "T_out": 40,
                  "Step": 1,
-                 "Modes":32,
-                 "Width": 64,
+                 "Modes":16,
+                 "Width": 32,
                  "Variables":3, 
-                 "Noise":0.1}
+                 "Noise":0.0}
 
 run = wandb.init(project='FNO',
-                 notes='Conv3D for the Input Space',
+                 notes='3D convolutions along the spatial domain and Conv1D ',
                  config=configuration,
                  mode='online')
 
@@ -349,7 +349,7 @@ class AddGaussianNoise(object):
         self.std = self.std.cpu()
 
 additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
-# additive_noise.cuda()
+additive_noise.cuda()
 
 # %%
 
@@ -394,8 +394,8 @@ class SpectralConv2d_fast(nn.Module):
         #Return to physical space
         x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
         return x
+
 '''
-  
 class SimpleBlock2d(nn.Module):
     def __init__(self, modes1, modes2, width):
         super(SimpleBlock2d, self).__init__()
@@ -466,7 +466,7 @@ class SimpleBlock2d(nn.Module):
       return x
 '''
 
-#Changed the conv1d for conv3d - over the variables, and the spatial distribution of the fields. 
+#Changed the conv1d for conv3d - over the variables, and the spatial distribution of the fields. - Combined both in this setting. 
 class SimpleBlock2d(nn.Module):
     def __init__(self, modes1, modes2, width):
         super(SimpleBlock2d, self).__init__()
@@ -498,6 +498,10 @@ class SimpleBlock2d(nn.Module):
         self.w1 = nn.Conv3d(self.width, self.width, 1)
         self.w2 = nn.Conv3d(self.width, self.width, 1)
         self.w3 = nn.Conv3d(self.width, self.width, 1)
+        self.w00 = nn.Conv1d(self.width, self.width, 1)
+        self.w11 = nn.Conv1d(self.width, self.width, 1)
+        self.w22 = nn.Conv1d(self.width, self.width, 1)
+        self.w33 = nn.Conv1d(self.width, self.width, 1)
         self.bn0 = torch.nn.BatchNorm3d(self.width)
         self.bn1 = torch.nn.BatchNorm3d(self.width)
         self.bn2 = torch.nn.BatchNorm3d(self.width)
@@ -515,19 +519,23 @@ class SimpleBlock2d(nn.Module):
 
       x1 = self.conv0(x)
       x2 = self.w0(x)
-      x = self.bn0(x1 + x2)
+      x3 = self.w00(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
+      x = self.bn0(x1 + x2 + x3)
       x = F.relu(x)
       x1 = self.conv1(x)
       x2 = self.w1(x)
-      x = self.bn1(x1 + x2)
+      x3 = self.w11(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
+      x = self.bn1(x1 + x2 + x3)
       x = F.relu(x)
       x1 = self.conv2(x)
       x2 = self.w2(x)
-      x = self.bn2(x1 + x2)
+      x3 = self.w22(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
+      x = self.bn2(x1 + x2 + x3)
       x = F.relu(x)
       x1 = self.conv3(x)
       x2 = self.w3(x)
-      x = self.bn3(x1 + x2)
+      x3 = self.w33(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
+      x = self.bn3(x1 + x2 + x3)
 
       x = x.permute(0, 2, 3, 4, 1)
       x = self.fc1(x)
@@ -558,8 +566,7 @@ class Net2d(nn.Module):
             c += reduce(operator.mul, list(p.size()))
 
         return c
-
-        
+    
 # %%
 
 
@@ -635,7 +642,7 @@ test_a = a_normalizer.encode(test_a)
 # y_normalizer = RangeNormalizer(train_u)
 y_normalizer = MinMax_Normalizer(train_u)
 train_u = y_normalizer.encode(train_u)
-# test_u = y_normalizer.encode(test_u)
+test_u_encoded = y_normalizer.encode(test_u)
 # %%
 
 train_a = train_a.reshape(ntrain,num_vars,S,S,T_in)
@@ -656,7 +663,7 @@ test_a = torch.cat((test_a, gridx.repeat([ntest,1,1,1,1]), gridy.repeat([ntest,1
 print(train_a.shape, train_u.shape)
 
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
+test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=batch_size, shuffle=False)
 
 t2 = default_timer()
 print('preprocessing finished, time used:', t2-t1)
@@ -686,9 +693,8 @@ gridy = gridy.to(device)
 
 # %%
 
-# sys.exit()
 epochs = configuration['Epochs']
-# y_normalizer.cuda()
+y_normalizer.cuda()
 
 start_time = time.time()
 for ep in tqdm(range(epochs)):
@@ -705,7 +711,6 @@ for ep in tqdm(range(epochs)):
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             im = model(xx)
-            print(im.shape, y.shape)
             loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
             if t == 0:
@@ -746,7 +751,7 @@ for ep in tqdm(range(epochs)):
                 xx = torch.cat((xx[..., step:-2], im,
                                 gridx.repeat([batch_size, 1, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1, 1])), dim=-1)
 
-            pred = y_normalizer.decode(pred)
+            # pred = y_normalizer.decode(pred)
             
             test_l2_step += loss.item()
             test_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
@@ -782,7 +787,7 @@ index = 0
 with torch.no_grad():
     for xx, yy in tqdm(test_loader):
         xx, yy = xx.to(device), yy.to(device)
-        xx = additive_noise(xx)
+        # xx = additive_noise(xx)
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             out = model(xx)
@@ -795,15 +800,18 @@ with torch.no_grad():
             xx = torch.cat((xx[..., step:-2], out,
                                 gridx.repeat([1, 1, 1, 1, 1]), gridy.repeat([1, 1, 1, 1, 1])), dim=-1)
         
-        pred = y_normalizer.decode(pred)
+        # pred = y_normalizer.decode(pred)
         pred_set[index]=pred
         index += 1
     
-test_l2 = (pred_set - test_u).pow(2).mean()
+test_l2 = (pred_set - test_u_encoded).pow(2).mean()
 print('Testing Error: %.3e' % (test_l2))
     
 wandb.run.summary['Training Time'] = train_time
 wandb.run.summary['Test Error'] = test_l2
+
+
+pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
 
 
 # %%
