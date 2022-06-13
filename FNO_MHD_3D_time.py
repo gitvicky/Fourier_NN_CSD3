@@ -22,9 +22,9 @@ configuration = {"Case": 'MHD',
                  "Scheduler Gamma": 0.5,
                  "Activation": 'ReLU',
                  "Normalisation Strategy": 'Min-Max. Single',
-                 "T_in": 10, 
-                 "T_out": 20,
-                 "Step": 1,
+                 "T_in": 20, 
+                 "T_out": 80,
+                 "Step": 10,
                  "Modes":4,
                  "Width": 16,
                  "Variables":1, 
@@ -37,7 +37,7 @@ run = wandb.init(project='FNO',
 
 run_id = wandb.run.id
 
-wandb.save('FNO_MHD.py')
+wandb.save('FNO_MHD_3D_Time.py')
 
 step = configuration['Step']
 
@@ -449,7 +449,10 @@ class FNO3d(nn.Module):
         x = x.permute(0, 4, 1, 2, 3)
         x = self.fc2(x)
         x = x.permute(0, 2, 3, 1, 4)
+        
+        #Averaging T_out
         # x = torch.mean(x, 3)
+        #Possibly worth exploring averaging out the T_out index
         return x
 
 
@@ -534,11 +537,12 @@ train_u = u[:ntrain,:,:,T_in:T+T_in]
 test_a = u[-ntest:,:,:,:T_in]
 test_u = u[-ntest:,:,:,T_in:T+T_in]
 
-train_a = train_a.reshape(ntrain,S,S,1,T_in).repeat([1,1,1,T,1])
-test_a = test_a.reshape(ntest,S,S,1,T_in).repeat([1,1,1,T,1])
 
-train_u = train_u.reshape(ntrain,S,S,1,T).repeat([1,1,1,T,1])
-test_u = test_u.reshape(ntest,S,S,1,T).repeat([1,1,1,T,1])
+train_a = train_a.reshape(ntrain,S,S,1,T_in).repeat([1,1,1,width,1])
+test_a = test_a.reshape(ntest,S,S,1,T_in).repeat([1,1,1,width,1])
+
+train_u = train_u.reshape(ntrain,S,S,1,T).repeat([1,1,1,width,1])
+test_u = test_u.reshape(ntest,S,S,1,T).repeat([1,1,1,width,1])
 
 print(train_u.shape)
 print(test_u.shape)
@@ -560,11 +564,11 @@ test_u_encoded = y_normalizer.encode(test_u)
 # %%
 # pad locations (x,y,t)
 gridx = torch.tensor(np.linspace(0, 1, S), dtype=torch.float)
-gridx = gridx.reshape(1, S, 1, 1, 1).repeat([1, 1, S, T, 1])
+gridx = gridx.reshape(1, S, 1, 1, 1).repeat([1, 1, S, width, 1])
 gridy = torch.tensor(np.linspace(0, 1, S), dtype=torch.float)
-gridy = gridy.reshape(1, 1, S, 1, 1).repeat([1, S, 1, T, 1])
-gridt = torch.tensor(np.linspace(0, 1, T+1)[1:], dtype=torch.float)
-gridt = gridt.reshape(1, 1, 1, T, 1).repeat([1, S, S, 1, 1])
+gridy = gridy.reshape(1, 1, S, 1, 1).repeat([1, S, 1, width, 1])
+gridt = torch.tensor(np.linspace(0, 1, width+1)[1:], dtype=torch.float)
+gridt = gridt.reshape(1, 1, 1, width, 1).repeat([1, S, S, 1, 1])
 
 train_a = torch.cat((train_a, gridx.repeat([ntrain,1,1,1,1]), gridy.repeat([ntrain,1,1,1,1]),
                        gridt.repeat([ntrain,1,1,1,1])), dim=-1)
@@ -632,6 +636,10 @@ for ep in tqdm(range(epochs)):
             xx = torch.cat((xx[..., step:-3], im,
                             gridx.repeat([batch_size, 1, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1, 1]), gridt.repeat([batch_size, 1, 1, 1, 1])), dim=-1)
 
+            #Averaging T_out
+            # xx = torch.cat((xx[..., step:-3], im,
+            #                 gridx[:, :, :, 0, :].repeat([batch_size, 1, 1, 1]), gridy[:, :, :, 0, :].repeat([batch_size, 1, 1, 1]), gridt[:, :, :, 0, :].repeat([batch_size, 1, 1, 1])), dim=-1)
+
         train_l2_step += loss.item()
         l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
         train_l2_full += l2_full.item()
@@ -661,6 +669,10 @@ for ep in tqdm(range(epochs)):
 
                 xx = torch.cat((xx[..., step:-3], im,
                                 gridx.repeat([batch_size, 1, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1, 1]), gridt.repeat([batch_size, 1, 1, 1, 1])), dim=-1)
+            
+            #Averaging T_out
+            # xx = torch.cat((xx[..., step:-3], im,
+            #                 gridx[:, :, :, 0, :].repeat([batch_size, 1, 1, 1]), gridy[:, :, :, 0, :].repeat([batch_size, 1, 1, 1]), gridt[:, :, :, 0, :].repeat([batch_size, 1, 1, 1])), dim=-1)
 
             # pred = y_normalizer.decode(pred)
             
@@ -709,6 +721,10 @@ with torch.no_grad():
 
             xx = torch.cat((xx[..., step:-3], out,
                             gridx.repeat([batch_size, 1, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1, 1]), gridt.repeat([batch_size, 1, 1, 1, 1])), dim=-1)
+            
+            #Averaging T_out
+            # xx = torch.cat((xx[..., step:-3], out,
+            #                 gridx[:, :, :, 0, :].repeat([batch_size, 1, 1, 1]), gridy[:, :, :, 0, :].repeat([batch_size, 1, 1, 1]), gridt[:, :, :, 0, :].repeat([batch_size, 1, 1, 1])), dim=-1)
 
         # pred = y_normalizer.decode(pred)
         pred_set[index]=pred
