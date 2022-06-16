@@ -17,23 +17,25 @@ configuration = {"Case": 'MHD',
                  "Epochs": 500,
                  "Batch Size": 5,
                  "Optimizer": 'Adam',
-                 "Learning Rate": 0.01,
+                 "Learning Rate": 0.001,
                  "Scheduler Step": 100 ,
-                 "Scheduler Gamma": 0.5,
+                 "Scheduler Gamma": 0.9,
                  "Activation": 'ReLU',
                  "Normalisation Strategy": 'Min-Max. Single',
                  "T_in": 20, 
                  "T_out": 80,
                  "Step": 10,
-                 "Modes":20,
-                 "Width": 30,
+                 "Modes":8,
+                 "Width": 32,
                  "Variables":1, 
                  "Noise":0.0}
+
+#Modes < T_in + 3 // 2
 
 run = wandb.init(project='FNO',
                  notes='',
                  config=configuration,
-                 mode='online')
+                 mode='disabled')
 
 run_id = wandb.run.id
 
@@ -356,14 +358,17 @@ class SpectralConv3d(nn.Module):
     # Complex multiplication
     def compl_mul3d(self, input, weights):
         # (batch, in_channel, x,y,t ), (in_channel, out_channel, x,y,t) -> (batch, out_channel, x,y,t)
+        print(input.shape, weights.shape)
         return torch.einsum("bixyz,ioxyz->boxyz", input, weights)
 
     def forward(self, x):
         batchsize = x.shape[0]
         #Compute Fourier coeffcients up to factor of e^(- something constant)
         x_ft = torch.fft.rfftn(x, dim=[-3,-2,-1])
+        print(x.shape)
 
         # Multiply relevant Fourier modes
+        print(self.modes3)
         out_ft = torch.zeros(batchsize, self.out_channels, x.size(-3), x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
         out_ft[:, :, :self.modes1, :self.modes2, :self.modes3] = \
             self.compl_mul3d(x_ft[:, :, :self.modes1, :self.modes2, :self.modes3], self.weights1)
@@ -400,9 +405,7 @@ class FNO3d(nn.Module):
         self.modes2 = modes2
         self.modes3 = modes3
         self.width = width
-        # self.padding = 6 # pad the domain if input is non-periodic
         self.fc0 = nn.Linear(self.width, self.width)
-        # input channel is 12: the solution of the first 10 timesteps + 3 locations (u(1, x, y), ..., u(10, x, y),  x, y, t)
 
         self.conv0 = SpectralConv3d(self.width, self.width, self.modes1, self.modes2, self.modes3)
         self.conv1 = SpectralConv3d(self.width, self.width, self.modes1, self.modes2, self.modes3)
@@ -421,10 +424,12 @@ class FNO3d(nn.Module):
         self.fc2 = nn.Linear(T_in + 3, step)
 
     def forward(self, x):
-        print()
+        print(x.shape)
         x = x.permute(0, 1, 2, 4, 3)
+        print(x.shape)
         x = self.fc0(x)
         x = x.permute(0, 4, 1, 2, 3)
+        print(x.shape)
 
         x1 = self.conv0(x)
         x2 = self.w0(x)
@@ -444,6 +449,8 @@ class FNO3d(nn.Module):
         x1 = self.conv3(x)
         x2 = self.w3(x)
         x = x1 + x2
+        
+        print(x.shape)
         x = x.permute(0, 2, 3, 4, 1) # pad the domain if input is non-periodic
         x = self.fc1(x)
         x = F.relu(x)
@@ -482,8 +489,8 @@ class Net3d(nn.Module):
 
 # %%
 
-model = Net3d(modes, width)
-model(xx).shape
+# model = Net3d(modes, width)
+# model(xx).shape
  
 # %%
 ################################################################
@@ -548,7 +555,6 @@ test_u = test_u.reshape(ntest,S,S,1,T).repeat([1,1,1,width,1])
 print(train_u.shape)
 print(test_u.shape)
 
-
 # %%
 # a_normalizer = RangeNormalizer(train_a)
 a_normalizer = MinMax_Normalizer(train_a)
@@ -610,7 +616,7 @@ gridt = gridt.to(device)
 # %%
 
 epochs = configuration['Epochs']
-y_normalizer.cuda()
+# y_normalizer.cuda()
 
 start_time = time.time()
 for ep in tqdm(range(epochs)):
