@@ -522,6 +522,7 @@ test_a = a_normalizer.encode(test_a)
 y_normalizer = MinMax_Normalizer(train_u)
 train_u = y_normalizer.encode(train_u)
 # test_u = y_normalizer.encode(test_u)
+test_u_encoded = y_normalizer.encode(test_u)
 
 # %%
 
@@ -541,7 +542,7 @@ train_a = torch.cat((train_a, gridx.repeat([ntrain,1,1,1]), gridy.repeat([ntrain
 test_a = torch.cat((test_a, gridx.repeat([ntest,1,1,1]), gridy.repeat([ntest,1,1,1])), dim=-1)
 
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
+test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=batch_size, shuffle=False)
 
 t2 = default_timer()
 print('preprocessing finished, time used:', t2-t1)
@@ -630,7 +631,7 @@ for ep in tqdm(range(epochs)):
                 xx = torch.cat((xx[..., step:-2], im,
                                 gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1)
 
-            pred = y_normalizer.decode(pred)
+            # pred = y_normalizer.decode(pred)
             
             test_l2_step += loss.item()
             test_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
@@ -677,16 +678,17 @@ with torch.no_grad():
             xx = torch.cat((xx[..., step:-2], out,
                                 gridx.repeat([1, 1, 1, 1]), gridy.repeat([1, 1, 1, 1])), dim=-1)
         
-        pred = y_normalizer.decode(pred)
+        # pred = y_normalizer.decode(pred)
         pred_set[index]=pred
         index += 1
     
-test_l2 = (pred_set - test_u).pow(2).mean()
+test_l2 = (pred_set - test_u_encoded).pow(2).mean()
 print('Testing Error: %.3e' % (test_l2))
     
 wandb.run.summary['Training Time'] = train_time
 wandb.run.summary['Test Error'] = test_l2
 
+pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
 
 # %%
 

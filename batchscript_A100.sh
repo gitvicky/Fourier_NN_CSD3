@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH -J FNO_MHD_3d
+#SBATCH -J FNO_MHD_3d_time
 #SBATCH -A ukaea-ap001-gpu 
 #SBATCH --nodes=1
 #SBATCH --ntasks=4

@@ -25,8 +25,8 @@ configuration = {"Case": 'MHD',
                  "T_in": 20, 
                  "T_out": 80,
                  "Step": 10,
-                 "Modes":4,
-                 "Width": 16,
+                 "Modes":20,
+                 "Width": 30,
                  "Variables":1, 
                  "Noise":0.0}
 
@@ -37,7 +37,7 @@ run = wandb.init(project='FNO',
 
 run_id = wandb.run.id
 
-wandb.save('FNO_MHD_3D_Time.py')
+wandb.save('FNO_MHD_3D_time.py')
 
 step = configuration['Step']
 
@@ -401,7 +401,7 @@ class FNO3d(nn.Module):
         self.modes3 = modes3
         self.width = width
         # self.padding = 6 # pad the domain if input is non-periodic
-        self.fc0 = nn.Linear(T, self.width)
+        self.fc0 = nn.Linear(self.width, self.width)
         # input channel is 12: the solution of the first 10 timesteps + 3 locations (u(1, x, y), ..., u(10, x, y),  x, y, t)
 
         self.conv0 = SpectralConv3d(self.width, self.width, self.modes1, self.modes2, self.modes3)
@@ -417,10 +417,11 @@ class FNO3d(nn.Module):
         self.bn2 = torch.nn.BatchNorm3d(self.width)
         self.bn3 = torch.nn.BatchNorm3d(self.width)
 
-        self.fc1 = nn.Linear(self.width, T)
+        self.fc1 = nn.Linear(self.width, self.width)
         self.fc2 = nn.Linear(T_in + 3, step)
 
     def forward(self, x):
+        print()
         x = x.permute(0, 1, 2, 4, 3)
         x = self.fc0(x)
         x = x.permute(0, 4, 1, 2, 3)
@@ -481,8 +482,8 @@ class Net3d(nn.Module):
 
 # %%
 
-# model = Net3d(modes, width)
-# model(xx).shape
+model = Net3d(modes, width)
+model(xx).shape
  
 # %%
 ################################################################
