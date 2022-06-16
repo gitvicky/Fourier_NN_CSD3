@@ -33,9 +33,9 @@ configuration = {"Case": 'MHD',
 #Modes < T_in + 3 // 2
 
 run = wandb.init(project='FNO',
-                 notes='',
+                 notes='Moving gridt',
                  config=configuration,
-                 mode='disabled')
+                 mode='online')
 
 run_id = wandb.run.id
 
@@ -358,17 +358,14 @@ class SpectralConv3d(nn.Module):
     # Complex multiplication
     def compl_mul3d(self, input, weights):
         # (batch, in_channel, x,y,t ), (in_channel, out_channel, x,y,t) -> (batch, out_channel, x,y,t)
-        print(input.shape, weights.shape)
         return torch.einsum("bixyz,ioxyz->boxyz", input, weights)
 
     def forward(self, x):
         batchsize = x.shape[0]
         #Compute Fourier coeffcients up to factor of e^(- something constant)
         x_ft = torch.fft.rfftn(x, dim=[-3,-2,-1])
-        print(x.shape)
 
         # Multiply relevant Fourier modes
-        print(self.modes3)
         out_ft = torch.zeros(batchsize, self.out_channels, x.size(-3), x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
         out_ft[:, :, :self.modes1, :self.modes2, :self.modes3] = \
             self.compl_mul3d(x_ft[:, :, :self.modes1, :self.modes2, :self.modes3], self.weights1)
@@ -424,12 +421,9 @@ class FNO3d(nn.Module):
         self.fc2 = nn.Linear(T_in + 3, step)
 
     def forward(self, x):
-        print(x.shape)
         x = x.permute(0, 1, 2, 4, 3)
-        print(x.shape)
         x = self.fc0(x)
         x = x.permute(0, 4, 1, 2, 3)
-        print(x.shape)
 
         x1 = self.conv0(x)
         x2 = self.w0(x)
@@ -450,7 +444,6 @@ class FNO3d(nn.Module):
         x2 = self.w3(x)
         x = x1 + x2
         
-        print(x.shape)
         x = x.permute(0, 2, 3, 4, 1) # pad the domain if input is non-periodic
         x = self.fc1(x)
         x = F.relu(x)
@@ -570,12 +563,27 @@ test_u_encoded = y_normalizer.encode(test_u)
 
 # %%
 # pad locations (x,y,t)
-gridx = torch.tensor(np.linspace(0, 1, S), dtype=torch.float)
-gridx = gridx.reshape(1, S, 1, 1, 1).repeat([1, 1, S, width, 1])
-gridy = torch.tensor(np.linspace(0, 1, S), dtype=torch.float)
-gridy = gridy.reshape(1, 1, S, 1, 1).repeat([1, S, 1, width, 1])
-gridt = torch.tensor(np.linspace(0, 1, width+1)[1:], dtype=torch.float)
+
+# gridx = torch.tensor(np.linspace(0, 1, S), dtype=torch.float)
+# gridx = gridx.reshape(1, S, 1, 1, 1).repeat([1, 1, S, width, 1])
+# gridy = torch.tensor(np.linspace(0, 1, S), dtype=torch.float)
+# gridy = gridy.reshape(1, 1, S, 1, 1).repeat([1, S, 1, width, 1])
+# gridt = torch.tensor(np.linspace(0, 1, width+1)[1:], dtype=torch.float)
+# gridt = gridt.reshape(1, 1, 1, width, 1).repeat([1, S, S, 1, 1])
+
+gridx_norm = MinMax_Normalizer(torch.Tensor(x), low=-1.0, high=1.0).encode(torch.tensor(x))
+gridx = gridx_norm.reshape(1, S, 1, 1, 1).repeat([1, 1, S, width, 1])
+gridy_norm = MinMax_Normalizer(torch.Tensor(y), low=-1.0, high=1.0).encode(torch.tensor(y))
+gridy = gridy_norm.reshape(1, 1, S, 1, 1).repeat([1, S, 1, width, 1])
+
+gridt_norm = MinMax_Normalizer(torch.Tensor(t), low=0.0, high=1.0).encode(torch.tensor(t))[0,:,0]
+gridt = torch.linspace(0, gridt_norm[T_in], width)
 gridt = gridt.reshape(1, 1, 1, width, 1).repeat([1, S, S, 1, 1])
+
+gridt_list = []
+for kk in range(1, int((T+T_in)/step)-1):
+    tempgridt = torch.linspace(gridt_norm[kk*step], gridt_norm[kk*step+T_in], width)
+    gridt_list.append(tempgridt.reshape(1, 1, 1, width, 1).repeat([1, S, S, 1, 1]))
 
 train_a = torch.cat((train_a, gridx.repeat([ntrain,1,1,1,1]), gridy.repeat([ntrain,1,1,1,1]),
                        gridt.repeat([ntrain,1,1,1,1])), dim=-1)
@@ -587,6 +595,9 @@ test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a,
 
 t2 = default_timer()
 print('preprocessing finished, time used:', t2-t1)
+
+# %%
+
 
 # %%
 
@@ -629,7 +640,7 @@ for ep in tqdm(range(epochs)):
         xx = xx.to(device)
         yy = yy.to(device)
         # xx = additive_noise(xx)
-
+        kk = 0 
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             im = model(xx)
@@ -640,6 +651,10 @@ for ep in tqdm(range(epochs)):
             else:
                 pred = torch.cat((pred, im), -1)
 
+            gridt = gridt_list[kk]
+            gridt = gridt.to(device)
+            kk+=1
+            
             xx = torch.cat((xx[..., step:-3], im,
                             gridx.repeat([batch_size, 1, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1, 1]), gridt.repeat([batch_size, 1, 1, 1, 1])), dim=-1)
 
@@ -664,6 +679,7 @@ for ep in tqdm(range(epochs)):
             xx = xx.to(device)
             yy = yy.to(device)
 
+            kk=0
             for t in range(0, T, step):
                 y = yy[..., t:t + step]
                 im = model(xx)
@@ -673,6 +689,10 @@ for ep in tqdm(range(epochs)):
                     pred = im
                 else:
                     pred = torch.cat((pred, im), -1)
+
+                gridt = gridt_list[kk]
+                gridt = gridt.to(device)
+                kk+=1
 
                 xx = torch.cat((xx[..., step:-3], im,
                                 gridx.repeat([batch_size, 1, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1, 1]), gridt.repeat([batch_size, 1, 1, 1, 1])), dim=-1)
@@ -717,6 +737,7 @@ with torch.no_grad():
     for xx, yy in tqdm(test_loader):
         xx, yy = xx.to(device), yy.to(device)
         # xx = additive_noise(xx)
+        kk = 0 
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             out = model(xx)
@@ -725,6 +746,10 @@ with torch.no_grad():
                 pred = out
             else:
                 pred = torch.cat((pred, out), -1)       
+
+            gridt = gridt_list[kk]
+            gridt = gridt.to(device)
+            kk+=1
 
             xx = torch.cat((xx[..., step:-3], out,
                             gridx.repeat([batch_size, 1, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1, 1]), gridt.repeat([batch_size, 1, 1, 1, 1])), dim=-1)
