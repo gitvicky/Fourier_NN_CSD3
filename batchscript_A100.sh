@@ -38,9 +38,10 @@ conda activate torch_env_3
 
 #! Full path to application executable: 
 # application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/FNO_MHD.py"
-application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/ConvLSTM_MHD.py"
 # application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/FNO_MHD_Multiple.py"
 # application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/FNO_MHD_3D_time.py"
+# application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/ConvLSTM_MHD.py"
+application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/UNet_MHD.py"
 
 #! Run options for the application:
 options=""
@@ -81,7 +82,7 @@ echo "Current directory: `pwd`"
 if [ "$SLURM_JOB_NODELIST" ]; then
         #! Create a machine file:
         export NODEFILE=`generate_pbs_nodefile`
-        cat $NODEFILE | uniq > machine.file.$JOBID
+        cat $NODEFILE | uniq > $JOBID.machine.file
         echo -e "\nNodes allocated:\n================"
         echo `cat machine.file.$JOBID | sed -e 's/\..*$//g'`
 fi
