@@ -8,6 +8,7 @@ Created on 11 March 2022
 
 U-Net modelled over the MHD data built using JOREK
 
+Code inspired from this paper : https://sciencedirect.com/science/article/abs/pii/S0010482519301520?via%3Dihub
 """
 # %%
 import wandb

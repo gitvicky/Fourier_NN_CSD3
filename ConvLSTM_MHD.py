@@ -8,6 +8,7 @@ Created on 11 March 2022
 
 Convolutional LSTM modelled over the MHD data built using JOREK
 
+Code inspired from this paper : Convolutional LSTM Network: A Machine Learning Approach for Precipitation Nowcasting
 """
 # %%
 import wandb

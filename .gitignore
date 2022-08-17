@@ -5,5 +5,5 @@ wandb/
 Models/
 
 #Machine Output files
-machine*.file
+machine
 *.out
