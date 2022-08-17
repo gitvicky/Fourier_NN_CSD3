@@ -15,7 +15,7 @@ import wandb
 configuration = {"Case": 'MHD',
                 "Field": 'rho',
                  "Type": 'ConvLSTM',
-                 "Epochs": 1,
+                 "Epochs": 500,
                  "Batch Size": 5,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,

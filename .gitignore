@@ -5,8 +5,8 @@ wandb/
 Models/
 
 #Methods in Testing 
-F_LSTM/
-F_RNN/
+# F_LSTM/
+# F_RNN/
 
 #Machine Output files
 *.file

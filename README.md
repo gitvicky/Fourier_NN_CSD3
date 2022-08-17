@@ -1,4 +1,4 @@
 # Fourier_NN_CSD3
+ 
 
-
-Experiments with the Fourier Layer in different Neural Network applications. 
+Fourier Neural Operator Applications for Plasma Modelling within Simulation and Experiments. 

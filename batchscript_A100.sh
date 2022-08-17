@@ -40,8 +40,8 @@ conda activate torch_env_3
 # application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/FNO_MHD.py"
 # application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/FNO_MHD_Multiple.py"
 # application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/FNO_MHD_3D_time.py"
-# application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/ConvLSTM_MHD.py"
-application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/UNet_MHD.py"
+application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/ConvLSTM_MHD.py"
+# application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/UNet_MHD.py"
 
 #! Run options for the application:
 options=""
