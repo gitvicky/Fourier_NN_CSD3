@@ -1,47 +1,46 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on 11 March 2022
+Created on Thu July 13 2022
 
 
 @author: vgopakum
 
-FNO modelled over the MHD data built using JOREK
+FNO 2d time on RBA Camera Data 
+
 
 """
+
 # %%
 import wandb
-configuration = {"Case": 'MHD',
-                "Field": 'w',
-                 "Type": '2D Time',
-                 "Epochs": 500,
-                 "Batch Size": 5,
+configuration = {"Case": 'RBA Camera',
+                 "Calibration": 'Calcam',
+                 "Epochs": 250,
+                 "Batch Size": 3,
                  "Optimizer": 'Adam',
-                 "Learning Rate": 0.001,
-                 "Scheduler Step": 100 ,
+                 "Learning Rate": 0.01,
+                 "Scheduler Step": 50 ,
                  "Scheduler Gamma": 0.5,
-                 "Activation": 'GELU',
-                 "Normalisation Strategy": 'Min-Max. Single',
-                 "Batch Normalisation": 'No',
-                 "T_in": 20,    
-                 "T_out": 80,
-                 "Step": 10,
+                 "Activation": 'ReLU',
+                 "Normalisation Strategy": 'Min-Max',
+                 "T_in": 10, 
+                 "T_out": 50,
+                 "Step": 1,
                  "Modes":16,
-                 "Width": 32,
-                 "Variables":1, 
-                 "Noise":0.0, 
-                 }
+                 "Width": 16,
+                 "Variables": 1,
+                 "Resolution":1, 
+                 "Noise":0.0}
 
-run = wandb.init(project='FNO-Benchmark',
+run = wandb.init(project='FNO',
                  notes='',
                  config=configuration,
                  mode='online')
 
 run_id = wandb.run.id
 
-wandb.save('FNO_MHD.py')
+wandb.save('FNO_rba.py')
 
-step = configuration['Step']
 
 # %%
 
@@ -60,7 +59,6 @@ from functools import partial
 
 import time 
 from timeit import default_timer
-from tqdm import tqdm 
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -68,11 +66,8 @@ np.random.seed(0)
 import os 
 path = os.getcwd()
 data_loc = os.path.dirname(os.path.dirname(os.getcwd()))
-# model_loc = os.path.dirname(os.path.dirname(os.getcwd()))
 model_loc = os.getcwd()
 
-
-# %%
 
 
 #################################################
@@ -149,7 +144,7 @@ class GaussianNormalizer(object):
 
 # normalization, scaling by range
 class RangeNormalizer(object):
-    def __init__(self, x, low=-1.0, high=1.0):
+    def __init__(self, x, low=0.0, high=1.0):
         super(RangeNormalizer, self).__init__()
         mymin = torch.min(x, 0)[0].view(-1)
         mymax = torch.max(x, 0)[0].view(-1)
@@ -171,7 +166,6 @@ class RangeNormalizer(object):
         x = x.view(s)
         return x
 
-
     def cuda(self):
         self.a = self.a.cuda()
         self.b = self.b.cuda()
@@ -179,39 +173,6 @@ class RangeNormalizer(object):
     def cpu(self):
         self.a = self.a.cpu()
         self.b = self.b.cpu()
-
-
-class MinMax_Normalizer(object):
-    def __init__(self, x, low=-1.0, high=1.0):
-        super(MinMax_Normalizer, self).__init__()
-        mymin = torch.min(x)
-        mymax = torch.max(x)
-
-        self.a = (high - low)/(mymax - mymin)
-        self.b = -self.a*mymax + high
-
-    def encode(self, x):
-        s = x.size()
-        x = x.reshape(s[0], -1)
-        x = self.a*x + self.b
-        x = x.view(s)
-        return x
-
-    def decode(self, x):
-        s = x.size()
-        x = x.reshape(s[0], -1)
-        x = (x - self.b)/self.a
-        x = x.view(s)
-        return x
-
-    def cuda(self):
-        self.a = self.a.cuda()
-        self.b = self.b.cuda()
-
-    def cpu(self):
-        self.a = self.a.cpu()
-        self.b = self.b.cpu()
-
 
 #loss function with rel/abs Lp loss
 class LpLoss(object):
@@ -290,6 +251,16 @@ class DenseNet(torch.nn.Module):
 
 # %%
 
+
+#Complex multiplication
+def compl_mul2d(a, b):
+    op = partial(torch.einsum, "bctq,dctq->bdtq")
+    return torch.stack([
+        op(a[..., 0], b[..., 0]) - op(a[..., 1], b[..., 1]),
+        op(a[..., 1], b[..., 0]) + op(a[..., 0], b[..., 1])
+    ], dim=-1)
+
+
 #Adding Gaussian Noise to the training dataset
 class AddGaussianNoise(object):
     def __init__(self, mean=0., std=1.):
@@ -310,7 +281,7 @@ class AddGaussianNoise(object):
         self.mean = self.mean.cpu()
         self.std = self.std.cpu()
 
-# additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
+additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
 # additive_noise.cuda()
 
 # %%
@@ -356,9 +327,47 @@ class SpectralConv2d_fast(nn.Module):
         #Return to physical space
         x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
         return x
+'''
+################################################################
+# fourier layer
+################################################################
 
-# %%
+class SpectralConv2d_fast(nn.Module):
+    def __init__(self, in_channels, out_channels, modes1, modes2):
+        super(SpectralConv2d_fast, self).__init__()
 
+        """
+        2D Fourier layer. It does FFT, linear transform, and Inverse FFT.    
+        """
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.modes1 = modes1 #Number of Fourier modes to multiply, at most floor(N/2) + 1
+        self.modes2 = modes2
+
+        self.scale = (1 / (in_channels * out_channels))
+        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, 2))
+        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, 2))
+
+    def forward(self, x):
+        batchsize = x.shape[0]
+        #Compute Fourier coeffcients up to factor of e^(- something constant)
+        x_ft = torch.rfft(x, 2, normalized=True, onesided=True)
+
+
+        # Multiply relevant Fourier modes
+        out_ft = torch.zeros(batchsize, self.in_channels, x.size(-2), x.size(-1)//2 + 1, 2, device=x.device)
+        out_ft[:, :, :self.modes1, :self.modes2] = \
+            compl_mul2d(x_ft[:, :, :self.modes1, :self.modes2], self.weights1)
+        out_ft[:, :, -self.modes1:, :self.modes2] = \
+            compl_mul2d(x_ft[:, :, -self.modes1:, :self.modes2], self.weights2)
+
+
+        #Return to physical space
+        x = torch.irfft(out_ft, 2, normalized=True, onesided=True, signal_sizes=(x.size(-2), x.size(-1)))
+
+        return x
+'''
 class SimpleBlock2d(nn.Module):
     def __init__(self, modes1, modes2, width):
         super(SimpleBlock2d, self).__init__()
@@ -390,14 +399,14 @@ class SimpleBlock2d(nn.Module):
         self.w1 = nn.Conv1d(self.width, self.width, 1)
         self.w2 = nn.Conv1d(self.width, self.width, 1)
         self.w3 = nn.Conv1d(self.width, self.width, 1)
-        # self.bn0 = torch.nn.BatchNorm2d(self.width)
-        # self.bn1 = torch.nn.BatchNorm2d(self.width)
-        # self.bn2 = torch.nn.BatchNorm2d(self.width)
-        # self.bn3 = torch.nn.BatchNorm2d(self.width)
+        self.bn0 = torch.nn.BatchNorm2d(self.width)
+        self.bn1 = torch.nn.BatchNorm2d(self.width)
+        self.bn2 = torch.nn.BatchNorm2d(self.width)
+        self.bn3 = torch.nn.BatchNorm2d(self.width)
 
 
         self.fc1 = nn.Linear(self.width, 128)
-        self.fc2 = nn.Linear(128, step)
+        self.fc2 = nn.Linear(128, 1)
   
     def forward(self, x):
       batchsize = x.shape[0]
@@ -408,30 +417,24 @@ class SimpleBlock2d(nn.Module):
 
       x1 = self.conv0(x)
       x2 = self.w0(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
-    #   x = self.bn0(x1 + x2)
-      x = x1+x2
-      x = F.gelu(x)
-
+      x = self.bn0(x1 + x2)
+      x = F.relu(x)
       x1 = self.conv1(x)
       x2 = self.w1(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
-    #   x = self.bn1(x1 + x2)
-      x = x1+x2
-      x = F.gelu(x)
-
+      x = self.bn1(x1 + x2)
+      x = F.relu(x)
       x1 = self.conv2(x)
       x2 = self.w2(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
-    #   x = self.bn2(x1 + x2)
-      x = x1+x2
-      x = F.gelu(x)
-      
+      x = self.bn2(x1 + x2)
+      x = F.relu(x)
       x1 = self.conv3(x)
       x2 = self.w3(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
-    #   x = self.bn3(x1 + x2)
-      x = x1+x2
+      x = self.bn3(x1 + x2)
+
 
       x = x.permute(0, 2, 3, 1)
       x = self.fc1(x)
-      x = F.gelu(x)
+      x = F.relu(x)
       x = self.fc2(x)
       return x
 
@@ -467,30 +470,32 @@ class Net2d(nn.Module):
 ################################################################
 
 # %%
-data =  np.load(data_loc + '/Data/MHD_JOREK_data.npz')
+
+data =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/rba_30280_30360.npy')
+data_calib =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/Calibrations/rba_rz_pos_30280_30360.npz')
+
+# data =  np.load(data_loc + '/Data/Cam_Data/rbb_fno_data.npy')
+# data_calib =  np.load(data_loc + '/Data/Cam_Data/rbb_rz_pos.npz')
 
 # %%
-field = configuration['Field']
-if field == 'Phi':
-    u_sol = data['Phi'][:,1:,:,:].astype(np.float32)
-elif field == 'w':
-    u_sol = data['w'][:,1:,:,:].astype(np.float32)
-elif field == 'rho':
-    u_sol = data['rho'][:,1:,:,:].astype(np.float32)
+#
+res = configuration['Resolution']
+u_sol = data.astype(np.float32)[:,:,::res, ::res]
 
+grid_size_x = u_sol.shape[2]
+grid_size_y = u_sol.shape[3]
 
-u_sol = np.nan_to_num(u_sol)
-x = data['Rgrid'][0,:].astype(np.float32)
-y = data['Zgrid'][:,0].astype(np.float32)
-t = data['time'].astype(np.float32)
-
-np.random.shuffle(u_sol)
 u = torch.from_numpy(u_sol)
 u = u.permute(0, 2, 3, 1)
 
-ntrain = 100
-ntest = 20
-S = 100 #Grid Size
+
+ntrain = 45
+ntest = 5
+batch_size_test = ntest 
+
+
+S_x = grid_size_x #Grid Size
+S_y = grid_size_y #Grid Size
 
 modes = configuration['Modes']
 width = configuration['Width']
@@ -505,6 +510,7 @@ t1 = default_timer()
 
 T_in = configuration['T_in']
 T = configuration['T_out']
+T_out = T
 step = configuration['Step']
 ################################################################
 # load data
@@ -521,36 +527,50 @@ print(test_u.shape)
 
 
 # %%
-# a_normalizer = RangeNormalizer(train_a)
-a_normalizer = MinMax_Normalizer(train_a)
+# a_normalizer = UnitGaussianNormalizer(train_a)
+a_normalizer = RangeNormalizer(train_a)
 train_a = a_normalizer.encode(train_a)
 test_a = a_normalizer.encode(test_a)
 
-# y_normalizer = RangeNormalizer(train_u)
-y_normalizer = MinMax_Normalizer(train_u)
+# y_normalizer = UnitGaussianNormalizer(train_u)
+y_normalizer = RangeNormalizer(train_u)
 train_u = y_normalizer.encode(train_u)
-# test_u = y_normalizer.encode(test_u)
-test_u_encoded = y_normalizer.encode(test_u)
+test_u_norm = y_normalizer.encode(test_u)
 
 # %%
 
-train_a = train_a.reshape(ntrain,S,S,T_in)
-test_a = test_a.reshape(ntest,S,S,T_in)
+train_a = train_a.reshape(ntrain,S_x,S_y,T_in)
+test_a = test_a.reshape(ntest,S_x,S_y,T_in)
 
+'''
+#Using arbitrary R and Z positions sampled uniformly within a specified domain range. 
 # pad the location (x,y)
+x = np.linspace(0.5, 1.5, 448)[::res]
 gridx = torch.tensor(x, dtype=torch.float)
-gridx = gridx.reshape(1, S, 1, 1).repeat([1, 1, S, 1])
-gridy = torch.tensor(y, dtype=torch.float)
-gridy = gridy.reshape(1, 1, S, 1).repeat([1, S, 1, 1])
+gridx = gridx.reshape(1, S_x, 1, 1).repeat([1, 1, S_y, 1])
 
-# train_a = torch.cat((gridx.repeat([ntrain,1,1,1]), gridy.repeat([ntrain,1,1,1]), train_a), dim=-1)
-# test_a = torch.cat((gridx.repeat([ntest,1,1,1]), gridy.repeat([ntest,1,1,1]), test_a), dim=-1)
+y = np.linspace(-1.0, 1.0, 640)[::res]
+gridy = torch.tensor(y, dtype=torch.float)
+gridy = gridy.reshape(1, 1, S_y, 1).repeat([1, S_x, 1, 1])
+
+'''
+#Using the calibrated R and Z positions averaged over the time and shots. 
+gridx = data_calib['r_pos'][::res, ::res]
+gridy = data_calib['z_pos'][::res, ::res]
+gridx = torch.tensor(gridx, dtype=torch.float)
+gridy = torch.tensor(gridy, dtype=torch.float)
+gridx = gridx.reshape(1, S_x, S_y, 1)
+gridy = gridy.reshape(1, S_x, S_y, 1)
+
 
 train_a = torch.cat((train_a, gridx.repeat([ntrain,1,1,1]), gridy.repeat([ntrain,1,1,1])), dim=-1)
 test_a = torch.cat((test_a, gridx.repeat([ntest,1,1,1]), gridy.repeat([ntest,1,1,1])), dim=-1)
 
+gridx = gridx.to(device)
+gridy = gridy.to(device)
+
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=batch_size, shuffle=False)
+test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_norm), batch_size=batch_size_test, shuffle=False)
 
 t2 = default_timer()
 print('preprocessing finished, time used:', t2-t1)
@@ -562,20 +582,22 @@ print('preprocessing finished, time used:', t2-t1)
 ################################################################
 
 model = Net2d(modes, width)
+wandb.run.summary['Number of Params'] = model.count_params()
+print("Number of model params : " + str(model.count_params()))
+
 # model = nn.DataParallel(model, device_ids = [0,1])
 model.to(device)
 
 # wandb.watch(model, log='all')
-wandb.run.summary['Number of Params'] = model.count_params()
 
 
-print("Number of model params : " + str(model.count_params()))
 
 optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate'], weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
 
 
-myloss = LpLoss(size_average=False)
+# myloss = LpLoss(size_average=False)
+myloss = nn.MSELoss()
 gridx = gridx.to(device)
 gridy = gridy.to(device)
 
@@ -629,20 +651,20 @@ for ep in tqdm(range(epochs)):
             for t in range(0, T, step):
                 y = yy[..., t:t + step]
                 im = model(xx)
-                loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
+                loss += myloss(im.reshape(batch_size_test, -1), y.reshape(batch_size_test, -1))
 
                 if t == 0:
                     pred = im
                 else:
                     pred = torch.cat((pred, im), -1)
-
+                
                 xx = torch.cat((xx[..., step:-2], im,
-                                gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1)
+                                gridx.repeat([xx.shape[0], 1, 1, 1]), gridy.repeat([xx.shape[0], 1, 1, 1])), dim=-1)
 
             # pred = y_normalizer.decode(pred)
             
             test_l2_step += loss.item()
-            test_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
+            test_l2_full += myloss(pred.reshape(batch_size_test, -1), yy.reshape(batch_size_test, -1)).item()
 
     t2 = default_timer()
     scheduler.step()
@@ -651,34 +673,36 @@ for ep in tqdm(range(epochs)):
     test_loss = test_l2_full / ntest
     
     print('Epochs: %d, Time: %.2f, Train Loss per step: %.3e, Train Loss: %.3e, Test Loss per step: %.3e, Test Loss: %.3e' % (ep, t2 - t1, train_l2_step / ntrain / (T / step), train_loss, test_l2_step / ntest / (T / step), test_loss))
-    
+
     wandb.log({'Train Loss': train_loss, 
                'Test Loss': test_loss})
     
 train_time = time.time() - start_time
 # %%
 
-torch.save(model.state_dict(), model_loc + '/Models/FNO_MHD_' +field+'_'+run_id + '.pth')
-wandb.save(model_loc + '/Models/FNO_MHD_' +field+'_'+run_id + '.pth')
+torch.save(model.state_dict(), model_loc + '/Models/FNO_rba_'+run_id + '.pth')
+wandb.save(model_loc + '/Models/FNO_rba_'+run_id + '.pth')
 
+# model = torch.load('NS_FNO_2d_time.pth', map_location=torch.device('cpu'))
 
 # %%
 
 #Testing 
-test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=1, shuffle=False)
+test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_norm), batch_size=1, shuffle=False)
 
-pred_set = torch.zeros(test_u.shape)
+pred_set = torch.zeros(test_u_norm.shape)
+pred_set_norm = torch.zeros(test_u_norm.shape)
+
 index = 0
+
 with torch.no_grad():
     for xx, yy in tqdm(test_loader):
-        loss = 0
         xx, yy = xx.to(device), yy.to(device)
         # xx = additive_noise(xx)
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             out = model(xx)
-            loss += myloss(out.reshape(1, -1), y.reshape(1, -1))
-
+            
             if t == 0:
                 pred = out
             else:
@@ -687,30 +711,29 @@ with torch.no_grad():
             xx = torch.cat((xx[..., step:-2], out,
                                 gridx.repeat([1, 1, 1, 1]), gridy.repeat([1, 1, 1, 1])), dim=-1)
         
-        # pred = y_normalizer.decode(pred)
-        pred_set[index]=pred
+
+        pred_set_norm[index]=pred
+
+        pred = y_normalizer.decode(pred)
+        pred_set[index] = pred
+
         index += 1
     
-MSE_error = (pred_set - test_u_encoded).pow(2).mean()
-MAE_error = torch.abs(pred_set - test_u_encoded).mean()
-LP_error = loss / (ntest*T/step)
-
-print('(MSE) Testing Error: %.3e' % (MSE_error))
-print('(MAE) Testing Error: %.3e' % (MAE_error))
-print('(LP) Testing Error: %.3e' % (LP_error))
-
-
+test_l2 = (pred_set_norm - test_u_norm).pow(2).mean()
+print('Testing Error: %.3e' % (test_l2))
+    
 wandb.run.summary['Training Time'] = train_time
-wandb.run.summary['MSE Test Error'] = MSE_error
-wandb.run.summary['MAE Test Error'] = MAE_error
-wandb.run.summary['LP Test Error'] = LP_error
+wandb.run.summary['Test Error'] = test_l2
 
-pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
 
 # %%
 
-idx = np.random.randint(0,ntest) 
-u_field = test_u[idx]
+
+# %%
+idx = np.random.randint(0, ntest) 
+idx = 0
+print(idx)
+u_field = test_u[idx].cpu().detach().numpy()
 
 fig = plt.figure(figsize=plt.figaspect(0.5))
 ax = fig.add_subplot(2,3,1)
@@ -719,26 +742,31 @@ ax.title.set_text('Initial')
 ax.set_ylabel('Solution')
 
 ax = fig.add_subplot(2,3,2)
-ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm)
+ax.imshow(u_field[:,:,int(T_out/2)], cmap=cm.coolwarm)
 ax.title.set_text('Middle')
 
 ax = fig.add_subplot(2,3,3)
 ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm)
 ax.title.set_text('Final')
 
-u_field = pred_set[idx]
+
+# u_field = pred_set[idx]
+# u_field = y_normalizer.decode(u_field)
+# u_field = u_field.cpu().detach().numpy()
+u_field = pred_set[idx].cpu().detach().numpy()
 
 ax = fig.add_subplot(2,3,4)
 ax.imshow(u_field[:,:,0], cmap=cm.coolwarm)
 ax.set_ylabel('FNO')
 
 ax = fig.add_subplot(2,3,5)
-ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm)
+ax.imshow(u_field[:,:,int(T_out/2)], cmap=cm.coolwarm)
 
 ax = fig.add_subplot(2,3,6)
 ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm)
 
-
-wandb.log({"MHD_" + field: plt})
-
+wandb.log({"RBA Camera" : plt})
 wandb.run.finish()
+
+
+# %%

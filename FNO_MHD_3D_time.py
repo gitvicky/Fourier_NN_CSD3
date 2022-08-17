@@ -12,27 +12,29 @@ FNO modelled over the MHD data built using JOREK
 # %%
 import wandb
 configuration = {"Case": 'MHD',
-                "Field": 'rho',
+                "Field": 'Phi',
                  "Type": '3D Time',
                  "Epochs": 500,
                  "Batch Size": 5,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
                  "Scheduler Step": 100 ,
-                 "Scheduler Gamma": 0.9,
-                 "Activation": 'ReLU',
+                 "Scheduler Gamma": 0.5,
+                 "Activation": 'GELU',
                  "Normalisation Strategy": 'Min-Max. Single',
+                 "Batch Normalisation": 'None',
                  "T_in": 20, 
                  "T_out": 80,
                  "Step": 10,
-                 "Modes":8,
+                 "Modes":8, #32 for x, y and 8 for time
                  "Width": 32,
                  "Variables":1, 
-                 "Noise":0.0}
+                 "Noise":0.0
+                 }
 
 #Modes < T_in + 3 // 2
 
-run = wandb.init(project='FNO',
+run = wandb.init(project='FNO-Benchmark',
                  notes='Moving gridt',
                  config=configuration,
                  mode='online')
@@ -310,25 +312,10 @@ class AddGaussianNoise(object):
         self.mean = self.mean.cpu()
         self.std = self.std.cpu()
 
-additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
+# additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
 # additive_noise.cuda()
 
 # %%
-
-################################################################
-# fourier layer
-################################################################
-
-#Complex multiplication
-# def compl_mul3d(a, b):
-#     # (batch, in_channel, x,y,t ), (in_channel, out_channel, x,y,t) -> (batch, out_channel, x,y,t)
-#     op = partial(torch.einsum, "bixyz,ioxyz->boxyz")
-#     return torch.stack([
-#         op(a[..., 0], b[..., 0]) - op(a[..., 1], b[..., 1]),
-#         op(a[..., 1], b[..., 0]) + op(a[..., 0], b[..., 1])
-#     ], dim=-1)
-
-
 
 ################################################################
 # 3d fourier layers
@@ -347,7 +334,7 @@ class SpectralConv3d(nn.Module):
         self.out_channels = out_channels
         self.modes1 = modes1 #Number of Fourier modes to multiply, at most floor(N/2) + 1
         self.modes2 = modes2
-        self.modes3 = modes3
+        self.modes3 = modes3 
 
         self.scale = (1 / (in_channels * out_channels))
         self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, self.modes3, dtype=torch.cfloat))
@@ -428,17 +415,17 @@ class FNO3d(nn.Module):
         x1 = self.conv0(x)
         x2 = self.w0(x)
         x = x1 + x2
-        x = F.relu(x)
+        x = F.gelu(x)
 
         x1 = self.conv1(x)
         x2 = self.w1(x)
         x = x1 + x2
-        x = F.relu(x)
+        x = F.gelu(x)
 
         x1 = self.conv2(x)
         x2 = self.w2(x)
         x = x1 + x2
-        x = F.relu(x)
+        x = F.gelu(x)
 
         x1 = self.conv3(x)
         x2 = self.w3(x)
@@ -446,7 +433,7 @@ class FNO3d(nn.Module):
         
         x = x.permute(0, 2, 3, 4, 1) # pad the domain if input is non-periodic
         x = self.fc1(x)
-        x = F.relu(x)
+        x = F.gelu(x)
         x = x.permute(0, 4, 1, 2, 3)
         x = self.fc2(x)
         x = x.permute(0, 2, 3, 1, 4)
@@ -465,7 +452,7 @@ class Net3d(nn.Module):
         A wrapper function
         """
 
-        self.conv1 = FNO3d(modes, modes, modes, width)
+        self.conv1 = FNO3d(modes + 24, modes + 24, modes, width)
 
 
     def forward(self, x):
@@ -510,7 +497,7 @@ np.random.shuffle(u_sol)
 u = torch.from_numpy(u_sol)
 u = u.permute(0, 2, 3, 1)
 
-ntrain = 80
+ntrain = 100
 ntest = 20
 S = 100 #Grid Size
 
@@ -627,7 +614,7 @@ gridt = gridt.to(device)
 # %%
 
 epochs = configuration['Epochs']
-# y_normalizer.cuda()
+y_normalizer.cuda()
 
 start_time = time.time()
 for ep in tqdm(range(epochs)):
@@ -761,12 +748,21 @@ with torch.no_grad():
         # pred = y_normalizer.decode(pred)
         pred_set[index]=pred
         index += 1
-    
-test_l2 = (pred_set - test_u_encoded).pow(2).mean()
-print('Testing Error: %.3e' % (test_l2))
-    
+
+
+MSE_error = (pred_set - test_u_encoded).pow(2).mean()
+MAE_error = torch.abs(pred_set - test_u_encoded).mean()
+LP_error = loss / (ntest*T/step)
+
+print('(MSE) Testing Error: %.3e' % (MSE_error))
+print('(MAE) Testing Error: %.3e' % (MAE_error))
+print('(LP) Testing Error: %.3e' % (LP_error))
+
+
 wandb.run.summary['Training Time'] = train_time
-wandb.run.summary['Test Error'] = test_l2
+wandb.run.summary['MSE Test Error'] = MSE_error
+wandb.run.summary['MAE Test Error'] = MAE_error
+wandb.run.summary['LP Test Error'] = LP_error
 
 pred_set = y_normalizer.decode(pred_set.to(device)).cpu()
 

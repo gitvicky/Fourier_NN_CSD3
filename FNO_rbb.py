@@ -10,14 +10,15 @@ FNO 2d time on RBB Camera Data
 
 
 """
+
 # %%
 import wandb
-configuration = {"Case": 'RBB Camera',
+configuration = {"Case": 'RBB Camera - Moved',
                  "Calibration": 'Calcam',
                  "Epochs": 100,
                  "Batch Size": 2,
                  "Optimizer": 'Adam',
-                 "Learning Rate": 0.01,
+                 "Learning Rate": 0.001,
                  "Scheduler Step": 100 ,
                  "Scheduler Gamma": 0.5,
                  "Activation": 'ReLU',
@@ -469,10 +470,18 @@ class Net2d(nn.Module):
 ################################################################
 
 # %%
+#  30055 - 30430 : Initial RBB Camera Data
+#  29920 - 29970 : moved RBB Camera Data
 
-data =  np.load(data_loc + '/Data/Cam_Data/rbb_fno_data.npy')
-data_calib =  np.load(data_loc + '/Data/Cam_Data/rbb_rz_pos.npz')
 
+# data =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/rbb_30055_30430.npy')
+# data_calib =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/Calibrations/rbb_rz_pos_30055_30430.npz')
+
+data =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/rbb_29920_29970.npy')
+data_calib =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/Calibrations/rbb_rz_pos_29920_29970.npz')
+
+# data =  np.load(data_loc + '/Data/Cam_Data/rbb_fno_data.npy')
+# data_calib =  np.load(data_loc + '/Data/Cam_Data/rbb_rz_pos.npz')
 
 # %%
 #
@@ -485,9 +494,13 @@ grid_size_y = u_sol.shape[3]
 u = torch.from_numpy(u_sol)
 u = u.permute(0, 2, 3, 1)
 
+if configuration['Case'] == 'RBB Camera':
+    ntrain = 50
+    ntest = 9
+elif configuration['Case'] == 'RBB Camera - Moved':
+    ntrain = 28 
+    ntest = 3 
 
-ntrain = 50
-ntest = 9
 
 S_x = grid_size_x #Grid Size
 S_y = grid_size_y #Grid Size

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH -J FNO_MHD_3d_time
+#SBATCH -J FNO_MHD
 #SBATCH -A ukaea-ap001-gpu 
 #SBATCH --nodes=1
 #SBATCH --ntasks=4
@@ -37,7 +37,10 @@ conda activate torch_env_3
 
 
 #! Full path to application executable: 
-application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/FNO_MHD_3D_time.py"
+# application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/FNO_MHD.py"
+application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/ConvLSTM_MHD.py"
+# application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/FNO_MHD_Multiple.py"
+# application="python /home/ir-gopa2/rds/rds-ukaea-ap001/ir-gopa2/Code/Fourier_NNs/FNO_MHD_3D_time.py"
 
 #! Run options for the application:
 options=""

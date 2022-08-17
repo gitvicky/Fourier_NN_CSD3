@@ -12,25 +12,28 @@ FNO modelled over the MHD data built using JOREK. All Variables together.
 """
 # %%
 import wandb
-configuration = {"Case": 'MHD - rho,phi,w',
+configuration = {"Case": 'MHD',
+                 "Field": 'rho,phi,w',
                  "Type": '2D Time',
                  "Epochs": 500,
-                 "Batch Size": 10,
+                 "Batch Size": 5,
                  "Optimizer": 'Adam',
-                 "Learning Rate": 0.01,
+                 "Learning Rate": 0.005,
                  "Scheduler Step": 100 ,
-                 "Scheduler Gamma": 0.5,
-                 "Activation": 'ReLU',
+                 "Scheduler Gamma": 0.9,
+                 "Activation": 'GELU',
                  "Normalisation Strategy": 'Min-Max',
+                 "Batch Normalisation": 'No',
                  "T_in": 20, 
-                 "T_out": 40,
-                 "Step": 1,
+                 "T_out": 50,
+                 "Step": 5,
                  "Modes":16,
                  "Width": 32,
                  "Variables":3, 
-                 "Noise":0.0}
+                 "Noise":0.0
+                }
 
-run = wandb.init(project='FNO',
+run = wandb.init(project='FNO-Benchmark',
                  notes='',
                  config=configuration,
                  mode='online')
@@ -348,8 +351,8 @@ class AddGaussianNoise(object):
         self.mean = self.mean.cpu()
         self.std = self.std.cpu()
 
-additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
-additive_noise.cuda()
+# additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
+# additive_noise.cuda()
 
 # %%
 
@@ -396,75 +399,75 @@ class SpectralConv2d_fast(nn.Module):
         return x
 
 
-class SimpleBlock2d(nn.Module):
-    def __init__(self, modes1, modes2, width):
-        super(SimpleBlock2d, self).__init__()
+# class SimpleBlock2d(nn.Module):
+#     def __init__(self, modes1, modes2, width):
+#         super(SimpleBlock2d, self).__init__()
 
-        """
-        The overall network. It contains 4 layers of the Fourier layer.
-        1. Lift the input to the desire channel dimension by self.fc0 .
-        2. 4 layers of the integral operators u' = (W + K)(u).
-            W defined by self.w; K defined by self.conv .
-        3. Project from the channel space to the output space by self.fc1 and self.fc2 .
+#         """
+#         The overall network. It contains 4 layers of the Fourier layer.
+#         1. Lift the input to the desire channel dimension by self.fc0 .
+#         2. 4 layers of the integral operators u' = (W + K)(u).
+#             W defined by self.w; K defined by self.conv .
+#         3. Project from the channel space to the output space by self.fc1 and self.fc2 .
         
-        input: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
-        input shape: (batchsize, x=64, y=64, c=12)
-        output: the solution of the next timestep
-        output shape: (batchsize, x=64, y=64, c=1)
-        """
+#         input: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
+#         input shape: (batchsize, x=64, y=64, c=12)
+#         output: the solution of the next timestep
+#         output shape: (batchsize, x=64, y=64, c=1)
+#         """
 
-        self.modes1 = modes1
-        self.modes2 = modes2
-        self.width = width
-        self.fc0 = nn.Linear(T_in+2, self.width)
-        # input channel is 12: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
+#         self.modes1 = modes1
+#         self.modes2 = modes2
+#         self.width = width
+#         self.fc0 = nn.Linear(T_in+2, self.width)
+#         # input channel is 12: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
 
-        self.conv0 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
-        self.conv1 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
-        self.conv2 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
-        self.conv3 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
-        self.w0 = nn.Conv1d(self.width, self.width, 1)
-        self.w1 = nn.Conv1d(self.width, self.width, 1)
-        self.w2 = nn.Conv1d(self.width, self.width, 1)
-        self.w3 = nn.Conv1d(self.width, self.width, 1)
-        self.bn0 = torch.nn.BatchNorm3d(self.width)
-        self.bn1 = torch.nn.BatchNorm3d(self.width)
-        self.bn2 = torch.nn.BatchNorm3d(self.width)
-        self.bn3 = torch.nn.BatchNorm3d(self.width)
+#         self.conv0 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+#         self.conv1 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+#         self.conv2 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+#         self.conv3 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+#         self.w0 = nn.Conv1d(self.width, self.width, 1)
+#         self.w1 = nn.Conv1d(self.width, self.width, 1)
+#         self.w2 = nn.Conv1d(self.width, self.width, 1)
+#         self.w3 = nn.Conv1d(self.width, self.width, 1)
+#         self.bn0 = torch.nn.BatchNorm3d(self.width)
+#         self.bn1 = torch.nn.BatchNorm3d(self.width)
+#         self.bn2 = torch.nn.BatchNorm3d(self.width)
+#         self.bn3 = torch.nn.BatchNorm3d(self.width)
 
-        self.fc1 = nn.Linear(self.width, 128)
-        self.fc2 = nn.Linear(128, 1)
+#         self.fc1 = nn.Linear(self.width, 128)
+#         self.fc2 = nn.Linear(128, 1)
   
-    def forward(self, x):
-      batchsize = x.shape[0]
-      size_x, size_y = x.shape[2], x.shape[3]
+#     def forward(self, x):
+#       batchsize = x.shape[0]
+#       size_x, size_y = x.shape[2], x.shape[3]
 
-      x = self.fc0(x)
-      x = x.permute(0, 4, 1, 2, 3)
+#       x = self.fc0(x)
+#       x = x.permute(0, 4, 1, 2, 3)
 
-      x1 = self.conv0(x)
-      x2 = self.w0(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
-      x = self.bn0(x1 + x2)
-      x = F.relu(x)
-      x1 = self.conv1(x)
-      x2 = self.w1(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
-      x = self.bn1(x1 + x2)
-      x = F.relu(x)
-      x1 = self.conv2(x)
-      x2 = self.w2(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
-      x = self.bn2(x1 + x2)
-      x = F.relu(x)
-      x1 = self.conv3(x)
-      x2 = self.w3(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
-      x = self.bn3(x1 + x2)
+#       x1 = self.conv0(x)
+#       x2 = self.w0(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
+#       x = self.bn0(x1 + x2)
+#       x = F.gelu(x)
+#       x1 = self.conv1(x)
+#       x2 = self.w1(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
+#       x = self.bn1(x1 + x2)
+#       x = F.gelu(x)
+#       x1 = self.conv2(x)
+#       x2 = self.w2(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
+#       x = self.bn2(x1 + x2)
+#       x = F.gelu(x)
+#       x1 = self.conv3(x)
+#       x2 = self.w3(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
+#       x = self.bn3(x1 + x2)
 
 
-      x = x.permute(0, 2, 3, 4, 1)
-      x = self.fc1(x)
-      x = F.relu(x)
-      x = self.fc2(x)
-      return x
-'''
+#       x = x.permute(0, 2, 3, 4, 1)
+#       x = self.fc1(x)
+#       x = F.gelu(x)
+#       x = self.fc2(x)
+#       return x
+
 
 #Changed the conv1d for conv3d - over the variables, and the spatial distribution of the fields. - Combined both in this setting. 
 class SimpleBlock2d(nn.Module):
@@ -498,17 +501,18 @@ class SimpleBlock2d(nn.Module):
         self.w1 = nn.Conv3d(self.width, self.width, 1)
         self.w2 = nn.Conv3d(self.width, self.width, 1)
         self.w3 = nn.Conv3d(self.width, self.width, 1)
-        # self.w00 = nn.Conv1d(self.width, self.width, 1)
-        # self.w11 = nn.Conv1d(self.width, self.width, 1)
-        # self.w22 = nn.Conv1d(self.width, self.width, 1)
-        # self.w33 = nn.Conv1d(self.width, self.width, 1)
-        self.bn0 = torch.nn.BatchNorm3d(self.width)
-        self.bn1 = torch.nn.BatchNorm3d(self.width)
-        self.bn2 = torch.nn.BatchNorm3d(self.width)
-        self.bn3 = torch.nn.BatchNorm3d(self.width)
+        self.w00 = nn.Conv1d(self.width, self.width, 1)
+        self.w11 = nn.Conv1d(self.width, self.width, 1)
+        self.w22 = nn.Conv1d(self.width, self.width, 1)
+        self.w33 = nn.Conv1d(self.width, self.width, 1)
+        # self.bn0 = torch.nn.BatchNorm3d(self.width)
+        # self.bn1 = torch.nn.BatchNorm3d(self.width)
+        # self.bn2 = torch.nn.BatchNorm3d(self.width)
+        # self.bn3 = torch.nn.BatchNorm3d(self.width)
+        
 
         self.fc1 = nn.Linear(self.width, 128)
-        self.fc2 = nn.Linear(128, 1)
+        self.fc2 = nn.Linear(128, step)
   
     def forward(self, x):
       batchsize = x.shape[0]
@@ -520,29 +524,36 @@ class SimpleBlock2d(nn.Module):
       x1 = self.conv0(x)
       x2 = self.w0(x)
       x3 = self.w00(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
-      x = self.bn0(x1 + x2 + x3)
-      x = F.relu(x)
+    #   x = self.bn0(x1 + x2 + x3)
+      x = x1 + x2 + x3
+      x = F.gelu(x)
+
       x1 = self.conv1(x)
       x2 = self.w1(x)
       x3 = self.w11(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
-      x = self.bn1(x1 + x2 + x3)
-      x = F.relu(x)
+    #   x = self.bn1(x1 + x2 + x3)
+      x = x1 + x2 + x3
+      x = F.gelu(x)
+
       x1 = self.conv2(x)
       x2 = self.w2(x)
       x3 = self.w22(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
-      x = self.bn2(x1 + x2 + x3)
-      x = F.relu(x)
+    #   x = self.bn2(x1 + x2 + x3)
+      x = x1 + x2 + x3
+      x = F.gelu(x)
+
       x1 = self.conv3(x)
       x2 = self.w3(x)
       x3 = self.w33(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
-      x = self.bn3(x1 + x2 + x3)
+    #   x = self.bn3(x1 + x2 + x3)
+      x = x1 + x2 + x3
 
       x = x.permute(0, 2, 3, 4, 1)
       x = self.fc1(x)
-      x = F.relu(x)
+      x = F.gelu(x)
       x = self.fc2(x)
       return x
-'''
+
 
 class Net2d(nn.Module):
     def __init__(self, modes, width):
@@ -585,6 +596,9 @@ v_sol = data['Phi'][:,1:,:,:].astype(np.float32)
 p_sol = data['w'][:,1:,:,:].astype(np.float32)
 
 u_sol = np.nan_to_num(u_sol)
+v_sol = np.nan_to_num(v_sol)
+p_sol = np.nan_to_num(p_sol)
+
 x = data['Rgrid'][0,:].astype(np.float32)
 y = data['Zgrid'][:,0].astype(np.float32)
 t = data['time'].astype(np.float32)
@@ -687,7 +701,8 @@ optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
 
 
-myloss = LpLoss(size_average=False)
+# myloss = LpLoss(size_average=False)
+myloss = torch.nn.MSELoss()
 gridx = gridx.to(device)
 gridy = gridy.to(device)
 
@@ -804,11 +819,19 @@ with torch.no_grad():
         pred_set[index]=pred
         index += 1
     
-test_l2 = (pred_set - test_u_encoded).pow(2).mean()
-print('Testing Error: %.3e' % (test_l2))
-    
+MSE_error = (pred_set - test_u_encoded).pow(2).mean()
+MAE_error = torch.abs(pred_set - test_u_encoded).mean()
+LP_error = loss / (ntest*T/step)
+
+print('(MSE) Testing Error: %.3e' % (MSE_error))
+print('(MAE) Testing Error: %.3e' % (MAE_error))
+print('(LP) Testing Error: %.3e' % (LP_error))
+
 wandb.run.summary['Training Time'] = train_time
-wandb.run.summary['Test Error'] = test_l2
+wandb.run.summary['MSE Test Error'] = MSE_error
+wandb.run.summary['MAE Test Error'] = MAE_error
+wandb.run.summary['LP Test Error'] = LP_error
+
 
 
 pred_set = y_normalizer.decode(pred_set.to(device)).cpu()

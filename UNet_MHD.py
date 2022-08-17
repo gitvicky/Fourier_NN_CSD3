@@ -6,26 +6,26 @@ Created on 11 March 2022
 
 @author: vgopakum
 
-FNO modelled over the MHD data built using JOREK
+U-Net modelled over the MHD data built using JOREK
 
 """
 # %%
 import wandb
 configuration = {"Case": 'MHD',
-                "Field": 'w',
-                 "Type": '2D Time',
-                 "Epochs": 500,
+                "Field": 'rho',
+                 "Type": 'U-Net',
+                 "Epochs": 1,
                  "Batch Size": 5,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
                  "Scheduler Step": 100 ,
                  "Scheduler Gamma": 0.5,
-                 "Activation": 'GELU',
+                 "Activation": 'Tanh, Sigmoid',
                  "Normalisation Strategy": 'Min-Max. Single',
                  "Batch Normalisation": 'No',
                  "T_in": 20,    
-                 "T_out": 80,
-                 "Step": 10,
+                 "T_out": 50,
+                 "Step": 5,
                  "Modes":16,
                  "Width": 32,
                  "Variables":1, 
@@ -35,7 +35,7 @@ configuration = {"Case": 'MHD',
 run = wandb.init(project='FNO-Benchmark',
                  notes='',
                  config=configuration,
-                 mode='online')
+                 mode='disabled')
 
 run_id = wandb.run.id
 
@@ -57,6 +57,7 @@ from matplotlib import cm
 import operator
 from functools import reduce
 from functools import partial
+from collections import OrderedDict
 
 import time 
 from timeit import default_timer
@@ -73,8 +74,6 @@ model_loc = os.getcwd()
 
 
 # %%
-
-
 #################################################
 #
 # Utilities
@@ -259,35 +258,6 @@ class LpLoss(object):
     def __call__(self, x, y):
         return self.rel(x, y)
 
-# A simple feedforward neural network
-class DenseNet(torch.nn.Module):
-    def __init__(self, layers, nonlinearity, out_nonlinearity=None, normalize=False):
-        super(DenseNet, self).__init__()
-
-        self.n_layers = len(layers) - 1
-
-        assert self.n_layers >= 1
-
-        self.layers = nn.ModuleList()
-
-        for j in range(self.n_layers):
-            self.layers.append(nn.Linear(layers[j], layers[j+1]))
-
-            if j != self.n_layers - 1:
-                if normalize:
-                    self.layers.append(nn.BatchNorm1d(layers[j+1]))
-
-                self.layers.append(nonlinearity())
-
-        if out_nonlinearity is not None:
-            self.layers.append(out_nonlinearity())
-
-    def forward(self, x):
-        for _, l in enumerate(self.layers):
-            x = l(x)
-
-        return x
-
 # %%
 
 #Adding Gaussian Noise to the training dataset
@@ -315,141 +285,99 @@ class AddGaussianNoise(object):
 
 # %%
 
-################################################################
-# fourier layer
-################################################################
+class UNet2d(nn.Module):
 
-class SpectralConv2d_fast(nn.Module):
-    def __init__(self, in_channels, out_channels, modes1, modes2):
-        super(SpectralConv2d_fast, self).__init__()
+    def __init__(self, in_channels=20, out_channels=5, init_features=32):
+        super(UNet2d, self).__init__()
 
-        """
-        2D Fourier layer. It does FFT, linear transform, and Inverse FFT.    
-        """
+        features = init_features
+        self.encoder1 = UNet2d._block(in_channels, features, name="enc1")
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.encoder2 = UNet2d._block(features, features * 2, name="enc2")
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.encoder3 = UNet2d._block(features * 2, features * 4, name="enc3")
+        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.encoder4 = UNet2d._block(features * 4, features * 8, name="enc4")
+        self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.modes1 = modes1 #Number of Fourier modes to multiply, at most floor(N/2) + 1
-        self.modes2 = modes2
+        self.bottleneck = UNet2d._block(features * 8, features * 16, name="bottleneck")
 
-        self.scale = (1 / (in_channels * out_channels))
-        self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, dtype=torch.cfloat))
-        self.weights2 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, dtype=torch.cfloat))
+        self.upconv4 = nn.ConvTranspose2d(
+            features * 16, features * 8, kernel_size=2, stride=2
+        )
+        self.decoder4 = UNet2d._block((features * 8) * 2, features * 8, name="dec4")
+        self.upconv3 = nn.ConvTranspose2d(
+            features * 8, features * 4, kernel_size=3, stride=2
+        )
+        self.decoder3 = UNet2d._block((features * 4) * 2, features * 4, name="dec3")
+        self.upconv2 = nn.ConvTranspose2d(
+            features * 4, features * 2, kernel_size=2, stride=2
+        )
+        self.decoder2 = UNet2d._block((features * 2) * 2, features * 2, name="dec2")
+        self.upconv1 = nn.ConvTranspose2d(
+            features * 2, features, kernel_size=2, stride=2
+        )
+        self.decoder1 = UNet2d._block(features * 2, features, name="dec1")
 
-    # Complex multiplication
-    def compl_mul2d(self, input, weights):
-        # (batch, in_channel, x,y ), (in_channel, out_channel, x,y) -> (batch, out_channel, x,y)
-        return torch.einsum("bixy,ioxy->boxy", input, weights)
-
-    def forward(self, x):
-        batchsize = x.shape[0]
-        #Compute Fourier coeffcients up to factor of e^(- something constant)
-        x_ft = torch.fft.rfft2(x)
-
-        # Multiply relevant Fourier modes
-        out_ft = torch.zeros(batchsize, self.out_channels,  x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
-        out_ft[:, :, :self.modes1, :self.modes2] = \
-            self.compl_mul2d(x_ft[:, :, :self.modes1, :self.modes2], self.weights1)
-        out_ft[:, :, -self.modes1:, :self.modes2] = \
-            self.compl_mul2d(x_ft[:, :, -self.modes1:, :self.modes2], self.weights2)
-
-        #Return to physical space
-        x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
-        return x
-
-# %%
-
-class SimpleBlock2d(nn.Module):
-    def __init__(self, modes1, modes2, width):
-        super(SimpleBlock2d, self).__init__()
-
-        """
-        The overall network. It contains 4 layers of the Fourier layer.
-        1. Lift the input to the desire channel dimension by self.fc0 .
-        2. 4 layers of the integral operators u' = (W + K)(u).
-            W defined by self.w; K defined by self.conv .
-        3. Project from the channel space to the output space by self.fc1 and self.fc2 .
-        
-        input: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
-        input shape: (batchsize, x=64, y=64, c=12)
-        output: the solution of the next timestep
-        output shape: (batchsize, x=64, y=64, c=1)
-        """
-
-        self.modes1 = modes1
-        self.modes2 = modes2
-        self.width = width
-        self.fc0 = nn.Linear(T_in+2, self.width)
-        # input channel is 12: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
-
-        self.conv0 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
-        self.conv1 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
-        self.conv2 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
-        self.conv3 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
-        self.w0 = nn.Conv1d(self.width, self.width, 1)
-        self.w1 = nn.Conv1d(self.width, self.width, 1)
-        self.w2 = nn.Conv1d(self.width, self.width, 1)
-        self.w3 = nn.Conv1d(self.width, self.width, 1)
-        # self.bn0 = torch.nn.BatchNorm2d(self.width)
-        # self.bn1 = torch.nn.BatchNorm2d(self.width)
-        # self.bn2 = torch.nn.BatchNorm2d(self.width)
-        # self.bn3 = torch.nn.BatchNorm2d(self.width)
-
-
-        self.fc1 = nn.Linear(self.width, 128)
-        self.fc2 = nn.Linear(128, step)
-  
-    def forward(self, x):
-      batchsize = x.shape[0]
-      size_x, size_y = x.shape[1], x.shape[2]
-
-      x = self.fc0(x)
-      x = x.permute(0, 3, 1, 2)
-
-      x1 = self.conv0(x)
-      x2 = self.w0(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
-    #   x = self.bn0(x1 + x2)
-      x = x1+x2
-      x = F.gelu(x)
-
-      x1 = self.conv1(x)
-      x2 = self.w1(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
-    #   x = self.bn1(x1 + x2)
-      x = x1+x2
-      x = F.gelu(x)
-
-      x1 = self.conv2(x)
-      x2 = self.w2(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
-    #   x = self.bn2(x1 + x2)
-      x = x1+x2
-      x = F.gelu(x)
-      
-      x1 = self.conv3(x)
-      x2 = self.w3(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
-    #   x = self.bn3(x1 + x2)
-      x = x1+x2
-
-      x = x.permute(0, 2, 3, 1)
-      x = self.fc1(x)
-      x = F.gelu(x)
-      x = self.fc2(x)
-      return x
-
-class Net2d(nn.Module):
-    def __init__(self, modes, width):
-        super(Net2d, self).__init__()
-
-        """
-        A wrapper function
-        """
-
-        self.conv1 = SimpleBlock2d(modes, modes, width)
-
+        self.conv = nn.Conv2d(
+            in_channels=features, out_channels=out_channels, kernel_size=1
+        )
 
     def forward(self, x):
-        x = self.conv1(x)
-        return x
+        enc1 = self.encoder1(x)
+        enc2 = self.encoder2(self.pool1(enc1))
+        enc3 = self.encoder3(self.pool2(enc2))
+        enc4 = self.encoder4(self.pool3(enc3))
 
+        bottleneck = self.bottleneck(self.pool4(enc4))
+
+        dec4 = self.upconv4(bottleneck)
+        dec4 = torch.cat((dec4, enc4), dim=1)
+        dec4 = self.decoder4(dec4)
+        dec3 = self.upconv3(dec4)
+        dec3 = torch.cat((dec3, enc3), dim=1)
+        dec3 = self.decoder3(dec3)
+        dec2 = self.upconv2(dec3)
+        dec2 = torch.cat((dec2, enc2), dim=1)
+        dec2 = self.decoder2(dec2)
+        dec1 = self.upconv1(dec2)
+        dec1 = torch.cat((dec1, enc1), dim=1)
+        dec1 = self.decoder1(dec1)
+        return self.conv(dec1)
+
+    @staticmethod
+    def _block(in_channels, features, name):
+        return nn.Sequential(
+            OrderedDict(
+                [
+                    (
+                        name + "conv1",
+                        nn.Conv2d(
+                            in_channels=in_channels,
+                            out_channels=features,
+                            kernel_size=3,
+                            padding=1,
+                            bias=False,
+                        ),
+                    ),
+                    (name + "norm1", nn.BatchNorm2d(num_features=features)),
+                    (name + "tanh1", nn.Tanh()),
+                    (
+                        name + "conv2",
+                        nn.Conv2d(
+                            in_channels=features,
+                            out_channels=features,
+                            kernel_size=3,
+                            padding=1,
+                            bias=False,
+                        ),
+                    ),
+                    (name + "norm2", nn.BatchNorm2d(num_features=features)),
+                    (name + "tanh2", nn.Tanh()),
+                ]
+            )
+        )
+    
 
     def count_params(self):
         c = 0
@@ -458,9 +386,7 @@ class Net2d(nn.Module):
 
         return c
 
-
 # %%
-
 
 ################################################################
 # Loading Data 
@@ -478,7 +404,6 @@ elif field == 'w':
 elif field == 'rho':
     u_sol = data['rho'][:,1:,:,:].astype(np.float32)
 
-
 u_sol = np.nan_to_num(u_sol)
 x = data['Rgrid'][0,:].astype(np.float32)
 y = data['Zgrid'][:,0].astype(np.float32)
@@ -486,7 +411,7 @@ t = data['time'].astype(np.float32)
 
 np.random.shuffle(u_sol)
 u = torch.from_numpy(u_sol)
-u = u.permute(0, 2, 3, 1)
+# u = u.permute(0, 2, 3, 1)
 
 ntrain = 100
 ntest = 20
@@ -510,11 +435,11 @@ step = configuration['Step']
 # load data
 ################################################################
 
-train_a = u[:ntrain,:,:,:T_in]
-train_u = u[:ntrain,:,:,T_in:T+T_in]
+train_a = u[:ntrain,:T_in,:,:]
+train_u = u[:ntrain,T_in:T+T_in,:,:]
 
-test_a = u[-ntest:,:,:,:T_in]
-test_u = u[-ntest:,:,:,T_in:T+T_in]
+test_a = u[-ntest:,:T_in, :, :]
+test_u = u[-ntest:,T_in:T+T_in,:,:]
 
 print(train_u.shape)
 print(test_u.shape)
@@ -534,20 +459,20 @@ test_u_encoded = y_normalizer.encode(test_u)
 
 # %%
 
-train_a = train_a.reshape(ntrain,S,S,T_in)
-test_a = test_a.reshape(ntest,S,S,T_in)
+# train_a = train_a.reshape(ntrain,S,S,T_in)
+# test_a = test_a.reshape(ntest,S,S,T_in)
 
-# pad the location (x,y)
-gridx = torch.tensor(x, dtype=torch.float)
-gridx = gridx.reshape(1, S, 1, 1).repeat([1, 1, S, 1])
-gridy = torch.tensor(y, dtype=torch.float)
-gridy = gridy.reshape(1, 1, S, 1).repeat([1, S, 1, 1])
+# # pad the location (x,y)
+# gridx = torch.tensor(x, dtype=torch.float)
+# gridx = gridx.reshape(1, S, 1, 1).repeat([1, 1, S, 1])
+# gridy = torch.tensor(y, dtype=torch.float)
+# gridy = gridy.reshape(1, 1, S, 1).repeat([1, S, 1, 1])
 
-# train_a = torch.cat((gridx.repeat([ntrain,1,1,1]), gridy.repeat([ntrain,1,1,1]), train_a), dim=-1)
-# test_a = torch.cat((gridx.repeat([ntest,1,1,1]), gridy.repeat([ntest,1,1,1]), test_a), dim=-1)
+# # train_a = torch.cat((gridx.repeat([ntrain,1,1,1]), gridy.repeat([ntrain,1,1,1]), train_a), dim=-1)
+# # test_a = torch.cat((gridx.repeat([ntest,1,1,1]), gridy.repeat([ntest,1,1,1]), test_a), dim=-1)
 
-train_a = torch.cat((train_a, gridx.repeat([ntrain,1,1,1]), gridy.repeat([ntrain,1,1,1])), dim=-1)
-test_a = torch.cat((test_a, gridx.repeat([ntest,1,1,1]), gridy.repeat([ntest,1,1,1])), dim=-1)
+# train_a = torch.cat((train_a, gridx.repeat([ntrain,1,1,1]), gridy.repeat([ntrain,1,1,1])), dim=-1)
+# test_a = torch.cat((test_a, gridx.repeat([ntest,1,1,1]), gridy.repeat([ntest,1,1,1])), dim=-1)
 
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u_encoded), batch_size=batch_size, shuffle=False)
@@ -561,8 +486,7 @@ print('preprocessing finished, time used:', t2-t1)
 # training and evaluation
 ################################################################
 
-model = Net2d(modes, width)
-# model = nn.DataParallel(model, device_ids = [0,1])
+model = UNet2d(T_in, step, 32)
 model.to(device)
 
 # wandb.watch(model, log='all')
@@ -574,15 +498,14 @@ print("Number of model params : " + str(model.count_params()))
 optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate'], weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
 
-
 myloss = LpLoss(size_average=False)
-gridx = gridx.to(device)
-gridy = gridy.to(device)
+
+# gridx = gridx.to(device)
+# gridy = gridy.to(device)
 
 # %%
-
 epochs = configuration['Epochs']
-y_normalizer.cuda()
+# y_normalizer.cuda()
 
 start_time = time.time()
 for ep in tqdm(range(epochs)):
@@ -597,17 +520,16 @@ for ep in tqdm(range(epochs)):
         # xx = additive_noise(xx)
 
         for t in range(0, T, step):
-            y = yy[..., t:t + step]
-            im = model(xx)
+            y = yy[:, t:t + step, : , :]
+            im = model(xx)[0][0]
             loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
             if t == 0:
                 pred = im
             else:
-                pred = torch.cat((pred, im), -1)
+                pred = torch.cat((pred, im), 1)
 
-            xx = torch.cat((xx[..., step:-2], im,
-                            gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1)
+            xx = torch.cat((xx[:, step:, :, :], im), dim=1)
 
         train_l2_step += loss.item()
         l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
@@ -627,17 +549,16 @@ for ep in tqdm(range(epochs)):
             yy = yy.to(device)
 
             for t in range(0, T, step):
-                y = yy[..., t:t + step]
-                im = model(xx)
+                y = yy[:, t:t + step, : , :]
+                im = model(xx)[0][0]
                 loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
                 if t == 0:
                     pred = im
                 else:
-                    pred = torch.cat((pred, im), -1)
+                    pred = torch.cat((pred, im), 1)
 
-                xx = torch.cat((xx[..., step:-2], im,
-                                gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1)
+                xx = torch.cat((xx[:, step:, :, :], im), dim=1)
 
             # pred = y_normalizer.decode(pred)
             
@@ -675,17 +596,17 @@ with torch.no_grad():
         xx, yy = xx.to(device), yy.to(device)
         # xx = additive_noise(xx)
         for t in range(0, T, step):
-            y = yy[..., t:t + step]
-            out = model(xx)
+            y = yy[:, t:t + step, : , :]
+            out = model(xx)[0][0]
             loss += myloss(out.reshape(1, -1), y.reshape(1, -1))
 
             if t == 0:
                 pred = out
             else:
-                pred = torch.cat((pred, out), -1)       
+                pred = torch.cat((pred, out), 1)       
                 
-            xx = torch.cat((xx[..., step:-2], out,
-                                gridx.repeat([1, 1, 1, 1]), gridy.repeat([1, 1, 1, 1])), dim=-1)
+            xx = torch.cat((xx[:, step:, :, :], out), dim=1)
+
         
         # pred = y_normalizer.decode(pred)
         pred_set[index]=pred
@@ -714,31 +635,33 @@ u_field = test_u[idx]
 
 fig = plt.figure(figsize=plt.figaspect(0.5))
 ax = fig.add_subplot(2,3,1)
-ax.imshow(u_field[:,:,0], cmap=cm.coolwarm)
+ax.imshow(u_field[0, :,:], cmap=cm.coolwarm)
 ax.title.set_text('Initial')
 ax.set_ylabel('Solution')
 
 ax = fig.add_subplot(2,3,2)
-ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm)
+ax.imshow(u_field[int(T/2),:,:], cmap=cm.coolwarm)
 ax.title.set_text('Middle')
 
 ax = fig.add_subplot(2,3,3)
-ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm)
+ax.imshow(u_field[-1,:,:], cmap=cm.coolwarm)
 ax.title.set_text('Final')
 
 u_field = pred_set[idx]
 
 ax = fig.add_subplot(2,3,4)
-ax.imshow(u_field[:,:,0], cmap=cm.coolwarm)
+ax.imshow(u_field[0,:,:], cmap=cm.coolwarm)
 ax.set_ylabel('FNO')
 
 ax = fig.add_subplot(2,3,5)
-ax.imshow(u_field[:,:,int(T/2)], cmap=cm.coolwarm)
+ax.imshow(u_field[int(T/2),:,:], cmap=cm.coolwarm)
 
 ax = fig.add_subplot(2,3,6)
-ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm)
+ax.imshow(u_field[-1,:,:], cmap=cm.coolwarm)
 
 
 wandb.log({"MHD_" + field: plt})
 
 wandb.run.finish()
+
+# %%
