@@ -15,6 +15,7 @@ FNO 2d time on RBB Camera Data
 import wandb
 configuration = {"Case": 'RBB Camera - Mixed',
                  "Calibration": 'Calcam',
+<<<<<<< HEAD
                  "Epochs": 500,
                  "Batch Size": 2,
                  "Optimizer": 'Adam',
@@ -26,20 +27,41 @@ configuration = {"Case": 'RBB Camera - Mixed',
                  "T_in": 5, 
                  "T_out": 80,
                  "Step": 5,
+=======
+                 "Epochs": 100,
+                 "Batch Size": 2,
+                 "Optimizer": 'Adam',
+                 "Learning Rate": 0.005,
+                 "Scheduler Step": 20 ,
+                 "Scheduler Gamma": 0.5,
+                 "Activation": 'ReLU',
+                 "Normalisation Strategy": 'Min-Max',
+                 "T_in": 10, 
+                 "T_out": 50,
+                 "Step": 1,
+>>>>>>> master
                  "Modes":16,
                  "Width": 16,
                  "Variables": 1,
                  "Resolution":1, 
                  "Noise":0.0}
 
+<<<<<<< HEAD
 run = wandb.init(project='FNO',
+=======
+run = wandb.init(project='FNO-Camera',
+>>>>>>> master
                  notes='',
                  config=configuration,
                  mode='online')
 
 run_id = wandb.run.id
 
+<<<<<<< HEAD
 wandb.save('FNO_rbb.py')
+=======
+wandb.save('FNO_rbb_mixed.py')
+>>>>>>> master
 
 
 # %%
@@ -556,6 +578,7 @@ train_u_2 = y_normalizer.encode(train_u_2)
 
 # %%
 
+<<<<<<< HEAD
 '''
 #Using arbitrary R and Z positions sampled uniformly within a specified domain range. 
 # pad the location (x,y)
@@ -575,6 +598,32 @@ gridx_1 = torch.tensor(gridx_1, dtype=torch.float)
 gridy_1 = torch.tensor(gridy_1, dtype=torch.float)
 gridx_1 = gridx_1.reshape(1, S_x, S_y, 1)
 gridy_1 = gridy_1.reshape(1, S_x, S_y, 1)
+=======
+
+#Using arbitrary R and Z positions sampled uniformly within a specified domain range. 
+# pad the location (x,y)
+# x = np.linspace(-1.5, 1.5, 448)[::res]
+# gridx = torch.tensor(x, dtype=torch.float)
+# gridx = gridx.reshape(1, S_x, 1, 1).repeat([1, 1, S_y, 1])
+
+# y = np.linspace(-2.0, 2.0, 640)[::res]
+# gridy = torch.tensor(y, dtype=torch.float)
+# gridy = gridy.reshape(1, 1, S_y, 1).repeat([1, S_x, 1, 1])
+
+# gridx_1 = gridx
+# gridx_2 = gridx
+# gridy_1 = gridy
+# gridy_2 = gridy
+
+
+#Using the calibrated R and Z positions averaged over the time and shots. 
+# gridx_1 = data_calib_1['r_pos'][::res, ::res]
+# gridy_1 = data_calib_1['z_pos'][::res, ::res]
+# gridx_1 = torch.tensor(gridx_1, dtype=torch.float)
+# gridy_1 = torch.tensor(gridy_1, dtype=torch.float)
+# gridx_1 = gridx_1.reshape(1, S_x, S_y, 1)
+# gridy_1 = gridy_1.reshape(1, S_x, S_y, 1)
+>>>>>>> master
 
 
 train_a_1 = torch.cat((train_a_1, gridx_1.repeat([ntrain_1,1,1,1]), gridy_1.repeat([ntrain_1,1,1,1])), dim=-1)

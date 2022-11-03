@@ -12,7 +12,11 @@ FNO modelled over the MHD data built using JOREK
 # %%
 import wandb
 configuration = {"Case": 'MHD',
+<<<<<<< HEAD
                 "Field": 'w',
+=======
+                "Field": 'rho',
+>>>>>>> master
                  "Type": '2D Time',
                  "Epochs": 500,
                  "Batch Size": 5,
@@ -24,8 +28,13 @@ configuration = {"Case": 'MHD',
                  "Normalisation Strategy": 'Min-Max. Single',
                  "Batch Normalisation": 'No',
                  "T_in": 20,    
+<<<<<<< HEAD
                  "T_out": 80,
                  "Step": 10,
+=======
+                 "T_out": 50,
+                 "Step": 5,
+>>>>>>> master
                  "Modes":16,
                  "Width": 32,
                  "Variables":1, 
@@ -386,10 +395,25 @@ class SimpleBlock2d(nn.Module):
         self.conv1 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
         self.conv2 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
         self.conv3 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+<<<<<<< HEAD
         self.w0 = nn.Conv1d(self.width, self.width, 1)
         self.w1 = nn.Conv1d(self.width, self.width, 1)
         self.w2 = nn.Conv1d(self.width, self.width, 1)
         self.w3 = nn.Conv1d(self.width, self.width, 1)
+=======
+        self.conv4 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+        self.conv5 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+        # self.w0 = nn.Conv1d(self.width, self.width, 1)
+        # self.w1 = nn.Conv1d(self.width, self.width, 1)
+        # self.w2 = nn.Conv1d(self.width, self.width, 1)
+        # self.w3 = nn.Conv1d(self.width, self.width, 1)
+        self.w0 = nn.Conv2d(self.width, self.width, 1)
+        self.w1 = nn.Conv2d(self.width, self.width, 1)
+        self.w2 = nn.Conv2d(self.width, self.width, 1)
+        self.w3 = nn.Conv2d(self.width, self.width, 1)
+        self.w4 = nn.Conv2d(self.width, self.width, 1)
+        self.w5 = nn.Conv2d(self.width, self.width, 1)
+>>>>>>> master
         # self.bn0 = torch.nn.BatchNorm2d(self.width)
         # self.bn1 = torch.nn.BatchNorm2d(self.width)
         # self.bn2 = torch.nn.BatchNorm2d(self.width)
@@ -407,28 +431,65 @@ class SimpleBlock2d(nn.Module):
       x = x.permute(0, 3, 1, 2)
 
       x1 = self.conv0(x)
+<<<<<<< HEAD
       x2 = self.w0(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+=======
+      x2 = self.w0(x)
+    #   x2 = self.w0(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+>>>>>>> master
     #   x = self.bn0(x1 + x2)
       x = x1+x2
       x = F.gelu(x)
 
       x1 = self.conv1(x)
+<<<<<<< HEAD
       x2 = self.w1(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+=======
+      x2 = self.w1(x)
+    #   x2 = self.w1(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+>>>>>>> master
     #   x = self.bn1(x1 + x2)
       x = x1+x2
       x = F.gelu(x)
 
       x1 = self.conv2(x)
+<<<<<<< HEAD
       x2 = self.w2(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+=======
+      x2 = self.w2(x)
+    #   x2 = self.w2(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+>>>>>>> master
     #   x = self.bn2(x1 + x2)
       x = x1+x2
       x = F.gelu(x)
       
       x1 = self.conv3(x)
+<<<<<<< HEAD
       x2 = self.w3(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
     #   x = self.bn3(x1 + x2)
       x = x1+x2
 
+=======
+      x2 = self.w3(x)
+    #   x2 = self.w3(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn3(x1 + x2)
+      x = x1+x2
+
+      x1 = self.conv4(x)
+      x2 = self.w4(x)
+    #   x2 = self.w4(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn4(x1 + x2)
+      x = x1+x2
+
+
+      x1 = self.conv5(x)
+      x2 = self.w5(x)
+    #   x2 = self.w5(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn5(x1 + x2)
+      x = x1+x2
+
+      
+>>>>>>> master
       x = x.permute(0, 2, 3, 1)
       x = self.fc1(x)
       x = F.gelu(x)
@@ -562,6 +623,10 @@ print('preprocessing finished, time used:', t2-t1)
 ################################################################
 
 model = Net2d(modes, width)
+<<<<<<< HEAD
+=======
+# model = model.double()
+>>>>>>> master
 # model = nn.DataParallel(model, device_ids = [0,1])
 model.to(device)
 
@@ -584,6 +649,10 @@ gridy = gridy.to(device)
 epochs = configuration['Epochs']
 y_normalizer.cuda()
 
+<<<<<<< HEAD
+=======
+# %%
+>>>>>>> master
 start_time = time.time()
 for ep in tqdm(range(epochs)):
     model.train()
@@ -674,9 +743,17 @@ with torch.no_grad():
         loss = 0
         xx, yy = xx.to(device), yy.to(device)
         # xx = additive_noise(xx)
+<<<<<<< HEAD
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             out = model(xx)
+=======
+        t1 = default_timer()
+        for t in range(0, T, step):
+            y = yy[..., t:t + step]
+            out = model(xx)
+            
+>>>>>>> master
             loss += myloss(out.reshape(1, -1), y.reshape(1, -1))
 
             if t == 0:
@@ -686,11 +763,19 @@ with torch.no_grad():
                 
             xx = torch.cat((xx[..., step:-2], out,
                                 gridx.repeat([1, 1, 1, 1]), gridy.repeat([1, 1, 1, 1])), dim=-1)
+<<<<<<< HEAD
         
         # pred = y_normalizer.decode(pred)
         pred_set[index]=pred
         index += 1
     
+=======
+        t2 = default_timer()
+        # pred = y_normalizer.decode(pred)
+        pred_set[index]=pred
+        index += 1
+        print(t2-t1)
+>>>>>>> master
 MSE_error = (pred_set - test_u_encoded).pow(2).mean()
 MAE_error = torch.abs(pred_set - test_u_encoded).mean()
 LP_error = loss / (ntest*T/step)

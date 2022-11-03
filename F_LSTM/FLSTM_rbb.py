@@ -1,62 +1,48 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Sep 22 17:57:06 2021
+Created on Fri Jul 15 23:52:51 2022
 
 @author: vgopakum
 
-Fourier RNN on the JOREK MHD 
-Mark 1 setup. 
-https://www.notion.so/engine-out-completely/Fourier-NNs-9d45170203ae419795584cf24d142423
+Fourier LSTM  on the JOREK MHD 
 """
 
 # %%
 
 import wandb
-configuration = {"Type": 'Elman RNN',
+configuration = {"Type": 'F-LSTM',
                  "Case": 'RBB Camera',
-<<<<<<< HEAD
-=======
-                #  "Case": 'RBB Camera - Moved',
->>>>>>> master
                  "Calibration": 'Calcam',
-                 "Epochs": 100,
-                 "Batch Size": 2,
+                 "Epochs": 500,
+                 "Batch Size": 5,
                  "Optimizer": 'Adam',
-<<<<<<< HEAD
-                 "Learning Rate": 0.01,
-=======
                  "Learning Rate": 0.005,
->>>>>>> master
                  "Scheduler Step": 100 ,
                  "Scheduler Gamma": 0.5,
                  "Activation": 'ReLU',
-                 "Normalisation Strategy": 'Min-Max',
-                 "T_in": 10, 
-                 "T_out": 50,
+                 "Normalisation Strategy": 'Min-Max. Single',
+                 "T_in": 20, 
+                 "T_out": 80,
                  "Step": 1,
-                 "Modes":32,
-                 "Width": 64,
+                 "Modes":16,
+                 "Width": 32,
                  "Hidden Size":32,
+                 "Cell Size": 32,
                  "Cells": 1,
                  "Variables": 1,
-                 "Resolution":1, 
+                 "Resolution":2, 
                  "Noise":0.0}
 
-
 run = wandb.init(project='Fourier RNN',
-                 notes='LP loss',
+                 notes='',
                  config=configuration,
-<<<<<<< HEAD
-                 mode = 'online'
-=======
                  mode = 'disabled'
->>>>>>> master
                 ) 
 
 run_id = wandb.run.id
 
-wandb.save('FRNN_rbb.py')
+wandb.save('FLSTM_MHD.py')
 
 # %%
 
@@ -84,75 +70,22 @@ torch.manual_seed(0)
 np.random.seed(0)
 
 path = os.getcwd()
-<<<<<<< HEAD
-data_loc = os.path.dirname(os.path.dirname(os.getcwd()))
-=======
 data_loc = os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd())))
->>>>>>> master
 # model_loc = os.path.dirname(os.path.dirname(os.getcwd()))
 model_loc = os.getcwd()
 
 
 # frnn_loc = os.path.dirname(os.getcwd())
-# sys.path.insert(0, frnn_loc)
-
+# model_loc = os.path.dirname(os.path.dirname(os.getcwd()))
+# path.insert(0, frnn_loc)
 
 device  = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-
 
 #################################################
 #
 # Utilities
 #
 #################################################
-
-#loss function with rel/abs Lp loss
-class LpLoss(object):
-    def __init__(self, d=2, p=2, size_average=True, reduction=True):
-        super(LpLoss, self).__init__()
-
-        #Dimension and Lp-norm type are postive
-        assert d > 0 and p > 0
-
-        self.d = d
-        self.p = p
-        self.reduction = reduction
-        self.size_average = size_average
-
-    def abs(self, x, y):
-        num_examples = x.size()[0]
-
-        #Assume uniform mesh
-        h = 1.0 / (x.size()[1] - 1.0)
-
-        all_norms = (h**(self.d/self.p))*torch.norm(x.view(num_examples,-1) - y.view(num_examples,-1), self.p, 1)
-
-        if self.reduction:
-            if self.size_average:
-                return torch.mean(all_norms)
-            else:
-                return torch.sum(all_norms)
-
-        return all_norms
-
-    def rel(self, x, y):
-        num_examples = x.size()[0]
-
-        diff_norms = torch.norm(x.reshape(num_examples,-1) - y.reshape(num_examples,-1), self.p, 1)
-        y_norms = torch.norm(y.reshape(num_examples,-1), self.p, 1)
-
-        if self.reduction:
-            if self.size_average:
-                return torch.mean(diff_norms/y_norms)
-            else:
-                return torch.sum(diff_norms/y_norms)
-
-        return diff_norms/y_norms
-
-    def __call__(self, x, y):
-        return self.rel(x, y)
-
 
 # normalization, pointwise gaussian
 class UnitGaussianNormalizer(object):
@@ -224,38 +157,6 @@ class MinMax_Normalizer(object):
         self.b = self.b.cpu()
 
 
-# normalization, scaling by range
-class RangeNormalizer(object):
-    def __init__(self, x, low=0.0, high=1.0):
-        super(RangeNormalizer, self).__init__()
-        mymin = torch.min(x, 0)[0].view(-1)
-        mymax = torch.max(x, 0)[0].view(-1)
-
-        self.a = (high - low)/(mymax - mymin)
-        self.b = -self.a*mymax + high
-
-    def encode(self, x):
-        s = x.size()
-        x = x.reshape(s[0], -1)
-        x = self.a*x + self.b
-        x = x.view(s)
-        return x
-
-    def decode(self, x):
-        s = x.size()
-        x = x.reshape(s[0], -1)
-        x = (x - self.b)/self.a
-        x = x.view(s)
-        return x
-
-    def cuda(self):
-        self.a = self.a.cuda()
-        self.b = self.b.cuda()
-
-    def cpu(self):
-        self.a = self.a.cpu()
-        self.b = self.b.cpu()
-
 #Adding Gaussian Noise to the training dataset
 class AddGaussianNoise(object):
     def __init__(self, mean=0., std=1.):
@@ -276,25 +177,18 @@ class AddGaussianNoise(object):
         self.mean = self.mean.cpu()
         self.std = self.std.cpu()
 
-<<<<<<< HEAD
-additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
-additive_noise.cuda()
-=======
 # additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
 # additive_noise.cuda()
->>>>>>> master
 # %%
 
 ################################################################
 # Loading Data 
 ################################################################
-<<<<<<< HEAD
 #Importing the Data 
 
-# %%
-data =  np.load(data_loc + '/Data/Cam_Data/rbb_fno_data.npy')
-data_calib =  np.load(data_loc + '/Data/Cam_Data/rbb_rz_pos.npz')
-=======
+################################################################
+# Loading Data 
+################################################################
 #  30055 - 30430 : Initial RBB Camera Data
 #  29920 - 29970 : moved RBB Camera Data
 
@@ -307,7 +201,6 @@ elif configuration['Case'] == 'RBB Camera - Moved':
 
     data =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/rbb_29920_29970.npy')
     data_calib =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/Calibrations/rbb_rz_pos_29920_29970.npz')
->>>>>>> master
 
 
 # %%
@@ -322,17 +215,12 @@ u = torch.from_numpy(u_sol)
 u = u.permute(0, 2, 3, 1)
 
 
-<<<<<<< HEAD
-ntrain = 50
-ntest = 9
-=======
 if configuration['Case'] == 'RBB Camera':
     ntrain = 50
     ntest = 9
 elif configuration['Case'] == 'RBB Camera - Moved':
     ntrain = 28 
     ntest = 3 
->>>>>>> master
 
 S_x = grid_size_x #Grid Size
 S_y = grid_size_y #Grid Size
@@ -345,6 +233,7 @@ batch_size = configuration['Batch Size']
 batch_size2 = batch_size
 
 hidden_size = configuration['Hidden Size']
+cell_size = configuration['Cell Size']
 num_cells = configuration['Cells']
 
 t1 = default_timer()
@@ -380,23 +269,12 @@ train_u = y_normalizer.encode(train_u)
 # test_u = y_normalizer.encode(test_u)
 
 
+
 # %%
 
 train_a = train_a.reshape(ntrain,S_x,S_y,T_in)
 test_a = test_a.reshape(ntest,S_x,S_y,T_in)
 
-'''
-#Using arbitrary R and Z positions sampled uniformly within a specified domain range. 
-# pad the location (x,y)
-x = np.linspace(0.5, 1.5, 448)[::res]
-gridx = torch.tensor(x, dtype=torch.float)
-gridx = gridx.reshape(1, S_x, 1, 1).repeat([1, 1, S_y, 1])
-
-y = np.linspace(-1.0, 1.0, 640)[::res]
-gridy = torch.tensor(y, dtype=torch.float)
-gridy = gridy.reshape(1, 1, S_y, 1).repeat([1, S_x, 1, 1])
-
-'''
 #Using the calibrated R and Z positions averaged over the time and shots. 
 gridx = data_calib['r_pos'][::res, ::res]
 gridy = data_calib['z_pos'][::res, ::res]
@@ -406,6 +284,9 @@ gridx = gridx.reshape(1, S_x, S_y, 1)
 gridy = gridy.reshape(1, S_x, S_y, 1)
 
 
+
+# train_a = torch.cat((gridx.repeat([ntrain,1,1,1]), gridy.repeat([ntrain,1,1,1]), train_a), dim=-1)
+# test_a = torch.cat((gridx.repeat([ntest,1,1,1]), gridy.repeat([ntest,1,1,1]), test_a), dim=-1)
 
 train_a = torch.cat((train_a, gridx.repeat([ntrain,1,1,1]), gridy.repeat([ntrain,1,1,1])), dim=-1)
 test_a = torch.cat((test_a, gridx.repeat([ntest,1,1,1]), gridy.repeat([ntest,1,1,1])), dim=-1)
@@ -462,88 +343,179 @@ class SpectralConv2d(nn.Module):
         #Return to physical space
         x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
         return x
+
+# %%
+
+
     
-class FRNN_Cell_PT(nn.Module):
+class F_LSTM_Cell(nn.Module):
    def __init__(self, modes, width, batch_first=True):
-        super(FRNN_Cell_PT, self).__init__()
+        super(F_LSTM_Cell, self).__init__()
         
         self.modes = modes
         self.width = width
         
-        self.F_x = SpectralConv2d(self.width, self.width, self.modes, self.modes)
-        self.F_h = SpectralConv2d(self.width, self.width, self.modes, self.modes)
+        self.F_ix = SpectralConv2d(self.width, self.width, self.modes, self.modes)
+        self.F_fx = SpectralConv2d(self.width, self.width, self.modes, self.modes)
+        self.F_gx = SpectralConv2d(self.width, self.width, self.modes, self.modes)
+        self.F_io = SpectralConv2d(self.width, self.width, self.modes, self.modes)
 
-        self.W_x = nn.Conv1d(self.width, self.width, 1)
-        self.W_h = nn.Conv1d(self.width, self.width, 1)
-        self.bn_x = torch.nn.BatchNorm2d(self.width)
-        self.bn_h = torch.nn.BatchNorm2d(self.width)
+        self.F_hi = SpectralConv2d(self.width, self.width, self.modes, self.modes)
+        self.F_hf = SpectralConv2d(self.width, self.width, self.modes, self.modes)
+        self.F_hg = SpectralConv2d(self.width, self.width, self.modes, self.modes)
+        self.F_ho = SpectralConv2d(self.width, self.width, self.modes, self.modes)
         
+        self.W_ix = nn.Conv1d(self.width, self.width, 1)
+        self.W_fx = nn.Conv1d(self.width, self.width, 1)
+        self.W_gx = nn.Conv1d(self.width, self.width, 1)
+        self.W_io = nn.Conv1d(self.width, self.width, 1)
 
+        self.W_hi = nn.Conv1d(self.width, self.width, 1)
+        self.W_hf = nn.Conv1d(self.width, self.width, 1)
+        self.W_hg = nn.Conv1d(self.width, self.width, 1)
+        self.W_ho = nn.Conv1d(self.width, self.width, 1)
+
+        self.bn_0 = torch.nn.BatchNorm2d(self.width)
+        self.bn_1 = torch.nn.BatchNorm2d(self.width)
+        self.bn_2 = torch.nn.BatchNorm2d(self.width)
+        self.bn_3 = torch.nn.BatchNorm2d(self.width)
+        self.bn_4 = torch.nn.BatchNorm2d(self.width)
+        self.bn_5 = torch.nn.BatchNorm2d(self.width)
+        self.bn_6 = torch.nn.BatchNorm2d(self.width)
+        self.bn_7 = torch.nn.BatchNorm2d(self.width)
         
-   def forward(self, x, h):
+   def forward(self, x, h, c):
+       
         batchsize = x.shape[0]
         size_x, size_y = x.shape[1], x.shape[2]
 
-        h = h.permute(0, 3, 2, 1)
-        h1 = self.F_h(h)
-        h2 = self.W_h(h.contiguous().view(batchsize, self.width, -1)).view(batchsize, self.width, size_y, size_x)
-        h = self.bn_h(h1+h2)
-        # h = h1 + h2
-        h = F.relu(h)
-        h = h.permute(0, 2, 3, 1)
+#Input Gate 
+        a = x.permute(0, 3, 2, 1)
+        a1 = self.F_ix(a)
+        a2 = self.W_ix(a.contiguous().view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+        a = self.bn_0(a1+a2)
+        a = F.relu(a)
+        a = a.permute(0, 2, 3, 1)
+
+        b = h.permute(0, 3, 2, 1)
+        b1 = self.F_hi(b)
+        b2 = self.W_hi(b.contiguous().view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+        b = self.bn_1(b1+b2)
+        b = F.relu(b)
+        b = b.permute(0, 2, 3, 1)
+
+        i = torch.sigmoid(a + b)
+
+#Forget Gate
+        a = x.permute(0, 3, 2, 1)
+        a1 = self.F_fx(a)
+        a2 = self.W_fx(a.contiguous().view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+        a = self.bn_2(a1+a2)
+        a = F.relu(a)
+        a = a.permute(0, 2, 3, 1)
+
+        b = h.permute(0, 3, 2, 1)
+        b1 = self.F_hf(b)
+        b2 = self.W_hf(b.contiguous().view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+        b = self.bn_3(b1+b2)
+        b = F.relu(b)
+        b = b.permute(0, 2, 3, 1)
+
+        f = torch.sigmoid(a + b)
+
+# G 
+
+        a = x.permute(0, 3, 2, 1)
+        a1 = self.F_gx(a)
+        a2 = self.W_gx(a.contiguous().view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+        a = self.bn_4(a1+a2)
+        a = F.relu(a)
+        a = a.permute(0, 2, 3, 1)
+
+        b = h.permute(0, 3, 2, 1)
+        b1 = self.F_hg(b)
+        b2 = self.W_hg(b.contiguous().view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+        b = self.bn_5(b1+b2)
+        b = F.relu(b)
+        b = b.permute(0, 2, 3, 1)
+
+        g = torch.tanh(a + b)
+
+
+#Output Gate 
+
+
+        a = x.permute(0, 3, 2, 1)
+        a1 = self.F_io(a)
+        a2 = self.W_io(a.contiguous().view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+        a = self.bn_6(a1+a2)
+        a = F.relu(a)
+        a = a.permute(0, 2, 3, 1)
+
+        b = h.permute(0, 3, 2, 1)
+        b1 = self.F_ho(b)
+        b2 = self.W_ho(b.contiguous().view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+        b = self.bn_7(b1+b2)
+        b = F.relu(b)
+        b = b.permute(0, 2, 3, 1)
+
+        o = torch.sigmoid(a + b)   
+
+#Cell State
+        c =  f*c + i*g
+
+#Hidden State and Output y 
+        h = o * torch.tanh(c)
+        y = h
         
-        x = x.permute(0, 3, 2, 1)
-        x1 = self.F_x(x)
-        x2 = self.W_x(x.contiguous().view(batchsize, self.width, -1)).view(batchsize, self.width, size_y, size_x)
-        x = self.bn_x(x1+x2)
-        # x = x1 + x2
-        x = F.relu(x)
-        x = x.permute(0, 2, 3, 1)
-        
-        h = h+x
-        y = torch.tanh(h)
-        
-        return y, h.clone().detach()
+        return y, h.clone().detach(), c.clone().detach()
     
    def count_params(self):
-        c = 0
+        count = 0
         for p in self.parameters():
-            c += reduce(operator.mul, list(p.size()))
+            count += reduce(operator.mul, list(p.size()))
     
-        return c
+        return count
 
 
-class FRNN(nn.Module):
-   def __init__(self, modes, width, n_output, n_hidden, n_cells, T_in, batch_first=True):
-        super(FRNN, self).__init__()
+class F_LSTM(nn.Module):
+   def __init__(self, modes, width, n_output, n_hidden, n_cellsize, n_cells, T_in, batch_first=True):
+        super(F_LSTM, self).__init__()
         
         self.modes = modes
         self.width = width
         self.n_output = n_output 
         self.n_hidden = n_hidden
+        self.n_cellsize = n_cellsize
         
         self.linear_in_x = nn.Linear(T_in+2, self.width)
         self.linear_in_h = nn.Linear(self.n_hidden, self.width)
+        self.linear_in_c = nn.Linear(self.n_cellsize, self.width)
+        
         self.linear_out_x = nn.Linear(self.width, self.n_output)
         self.linear_out_h = nn.Linear(self.width , self.n_hidden)
+        self.linear_out_c = nn.Linear(self.width , self.n_cellsize)
 
-        self.FRNN_Cells = nn.ModuleList()
+        self.F_LSTM_Cells = nn.ModuleList()
         
         for ii in range(n_cells):
-            self.FRNN_Cells.append(FRNN_Cell_PT(self.modes, self.width))
+            self.F_LSTM_Cells.append(F_LSTM_Cell(self.modes, self.width))
 
         
-   def forward(self, x, h):
+   def forward(self, x, h, c):
        
+        x = self.linear_in_x(x) 
         h = self.linear_in_h(h)
-        x = self.linear_in_x(x)
+        c = self.linear_in_c(c)
 
-        for cell in self.FRNN_Cells:
-            x, h = cell(x, h)
+        for cell in self.F_LSTM_Cells:
+            x, h, c = cell(x, h, c)
 
         y = self.linear_out_x(x)
         h = self.linear_out_h(h)
-        return y, h.clone().detach()
+        c = self.linear_out_h(c)
+
+        return y, h.clone().detach(), c.clone().detach()
     
    def count_params(self):
         c = 0
@@ -551,9 +523,8 @@ class FRNN(nn.Module):
             c += reduce(operator.mul, list(p.size()))
     
         return c
-        
-        
-model = FRNN(modes, width, output_size, hidden_size, num_cells, T_in).to(device)
+      
+model = F_LSTM(modes, width, output_size, hidden_size, cell_size, num_cells, T_in)
 wandb.run.summary['Number of Params'] = model.count_params()
 # model = nn.DataParallel(model, device_ids = [0,1])
 model.to(device)
@@ -562,44 +533,43 @@ model.to(device)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate'], weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
-myloss = LpLoss(size_average=False)
-# criterion = torch.nn.MSELoss()
-criterion = myloss
+criterion = torch.nn.MSELoss()
 
-
+# %%
 epochs = configuration['Epochs']
-<<<<<<< HEAD
-y_normalizer.cuda()
-=======
-if device=='cuda':
-    y_normalizer.cuda()
->>>>>>> master
+# y_normalizer.cuda()
 
 start_time = time.time()
 for it in tqdm(range(epochs)):
     train_loss = 0
     for inp, out in train_loader:
         inp, out = inp.to(device), out.to(device)
-<<<<<<< HEAD
-        inp = additive_noise(inp)
-=======
         # inp = additive_noise(inp)
->>>>>>> master
 
         loss = 0 
-        # hidden = torch.ones((inp.shape[0], grid_size, grid_size, hidden_size)).to(device)*inp[:,:,:,0:1]
-        # hidden = torch.zeros((inp.shape[0], grid_size, grid_size, hidden_size )).to(device)
-        
+
         hidden =torch.cat((torch.ones((inp.shape[0], grid_size_x, grid_size_y, hidden_size-2)).to(device)*inp[:,:,:,0:1], 
-                    gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1).to(device)
+                        gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1).to(device)
+
+        # hidden = (torch.ones((inp.shape[0], grid_size, grid_size, hidden_size)).to(device)*inp[:,:,:,0:1]).to(device)
+
+        cell_state =torch.cat((torch.zeros((inp.shape[0], grid_size_x, grid_size_y, hidden_size-2)).to(device), 
+                        gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1).to(device)
+
+        # cell_state = torch.zeros((inp.shape[0], grid_size, grid_size, cell_size)).to(device)
         
         for t in range(0, T_out, step):
             
             o = out[..., t:t + step]
-            model_out, hidden = model(inp, hidden)
+            model_out, hidden, cell_state  = model(inp, hidden, cell_state)
+            
             hidden = torch.cat((hidden[...,:-2], 
                 gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1).to(device)
             
+            cell_state = torch.cat((cell_state[...,:-2], 
+                gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1).to(device)
+            
+
             loss += criterion(model_out, o)
             
             if t == 0:
@@ -631,23 +601,27 @@ index = 0
 with torch.no_grad():
     for inp, out in test_loader:
         inp, out = inp.to(device), out.to(device)
-<<<<<<< HEAD
-        inp = additive_noise(inp)
-=======
         # inp = additive_noise(inp)
->>>>>>> master
-        # hidden = torch.ones((inp.shape[0], grid_size, grid_size, hidden_size)).to(device)*inp[:,:,:,0:1]
-        # hidden = torch.zeros((1, grid_size, grid_size, hidden_size)).to(device)
-                
+
         hidden =torch.cat((torch.ones((inp.shape[0], grid_size_x, grid_size_y, hidden_size-2)).to(device)*inp[:,:,:,0:1], 
                         gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1).to(device)
+
+        # hidden = (torch.ones((inp.shape[0], grid_size, grid_size, hidden_size)).to(device)*inp[:,:,:,0:1]).to(device)
+
+        # cell_state = torch.zeros((inp.shape[0], grid_size, grid_size, cell_size)).to(device)
         
+        cell_state =torch.cat((torch.zeros((inp.shape[0], grid_size_x, grid_size_y, hidden_size-2)).to(device), 
+                        gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1).to(device)
+
         for t in range(0, T_out, step):
             o = out[..., t:t + step]
-            model_out, hidden = model(inp, hidden)
+            model_out, hidden, cell_state  = model(inp, hidden, cell_state)
 
             hidden = torch.cat((hidden[...,:-2], 
-                        gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1).to(device)
+                gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1).to(device)
+            
+            cell_state = torch.cat((cell_state[...,:-2], 
+                gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1).to(device)
             
             if t == 0:
                 pred = model_out
@@ -663,13 +637,13 @@ with torch.no_grad():
         index += 1
     
 test_l2 = (pred_set - test_u.to(device)).pow(2).mean()
-print('Fourier RNN - Testing Error: %.3e' % (test_l2))
+print('Fourier LSTM - Testing Error: %.3e' % (test_l2))
 
 wandb.run.summary['Training Time'] = train_time
 wandb.run.summary['Test Error'] = test_l2
 
-torch.save(model.state_dict(), model_loc + '/Models/FRNN_rbb_'+run_id + '.pth')
-wandb.save(model_loc + '/Models/FRNN_rbb_'+run_id + '.pth')
+torch.save(model.state_dict(), model_loc + '/Models/FLSTM_rbb_'+run_id + '.pth')
+wandb.save(model_loc + '/Models/FLSTM_rbb_'+run_id + '.pth')
 
 # %%
 
@@ -697,7 +671,7 @@ u_field = pred_set[idx].cpu().detach().numpy()
 
 ax = fig.add_subplot(2,3,4)
 ax.imshow(u_field[:,:,0], cmap=cm.coolwarm)
-ax.set_ylabel('F-RNN')
+ax.set_ylabel('F-LSTM')
 
 ax = fig.add_subplot(2,3,5)
 ax.imshow(u_field[:,:,int(T_out/2)], cmap=cm.coolwarm)
@@ -705,6 +679,6 @@ ax.imshow(u_field[:,:,int(T_out/2)], cmap=cm.coolwarm)
 ax = fig.add_subplot(2,3,6)
 ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm)
 
-wandb.log({"RBB Camera" : plt})
+wandb.log({"MHD_" + field: plt})
 wandb.run.finish()
 

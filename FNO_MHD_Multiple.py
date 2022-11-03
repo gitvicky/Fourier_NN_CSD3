@@ -23,7 +23,11 @@ configuration = {"Case": 'MHD',
                  "Scheduler Gamma": 0.9,
                  "Activation": 'GELU',
                  "Normalisation Strategy": 'Min-Max',
+<<<<<<< HEAD
                  "Batch Normalisation": 'No',
+=======
+                 "Batch Normalisation": 'Yes',
+>>>>>>> master
                  "T_in": 20, 
                  "T_out": 50,
                  "Step": 5,
@@ -34,7 +38,11 @@ configuration = {"Case": 'MHD',
                 }
 
 run = wandb.init(project='FNO-Benchmark',
+<<<<<<< HEAD
                  notes='',
+=======
+                 notes='Variable For Loops + Unet',
+>>>>>>> master
                  config=configuration,
                  mode='online')
 
@@ -58,6 +66,10 @@ from matplotlib import cm
 import operator
 from functools import reduce
 from functools import partial
+<<<<<<< HEAD
+=======
+from collections import OrderedDict
+>>>>>>> master
 
 import time 
 from timeit import default_timer
@@ -228,7 +240,11 @@ class MinMax_Normalizer(object):
         self.b_u = self.b_u.cuda()
         
         self.a_v = self.a_v.cuda()
+<<<<<<< HEAD
         self.b_v = self.b_v.cuda()
+=======
+        self.b_v = self.b_v.cuda() 
+>>>>>>> master
 
         self.a_p = self.a_p.cuda()
         self.b_p = self.b_p.cuda()
@@ -356,6 +372,81 @@ class AddGaussianNoise(object):
 
 # %%
 
+<<<<<<< HEAD
+=======
+class UNet3d(nn.Module):
+
+    def __init__(self, in_channels, out_channels, init_features=64):
+        super(UNet3d, self).__init__()
+
+        features = init_features
+        self.encoder1 = UNet3d._block(in_channels, features, name="enc1")
+        self.pool1 = nn.MaxPool3d(kernel_size=2, stride=2)
+
+
+        # self.bottleneck = UNet3d._block(features, features * 2, name="bottleneck")
+
+
+        self.upconv1 = nn.ConvTranspose3d(
+            features, features, kernel_size=(3,2,2), stride=2
+        )
+        self.decoder1 = UNet3d._block(features*2, features, name="dec1")
+
+        self.conv = nn.Conv3d(
+            in_channels=features, out_channels=out_channels, kernel_size=1
+        )
+
+    def forward(self, x):
+        enc1 = self.encoder1(x)
+        bottleneck = self.pool1(enc1)
+        dec1 = self.upconv1(bottleneck)
+        dec1 = torch.cat((dec1, enc1), dim=1)
+        dec1 = self.decoder1(dec1)
+        return self.conv(dec1)
+
+    @staticmethod
+    def _block(in_channels, features, name):
+        return nn.Sequential(
+            OrderedDict(
+                [
+                    (
+                        name + "conv1",
+                        nn.Conv3d(
+                            in_channels=in_channels,
+                            out_channels=features,
+                            kernel_size=3,
+                            padding=1,
+                            bias=False,
+                        ),
+                    ),
+                    (name + "norm1", nn.BatchNorm3d(num_features=features)),
+                    (name + "tanh1", nn.Tanh()),
+                    # (
+                    #     name + "conv2",
+                    #     nn.Conv3d(
+                    #         in_channels=features,
+                    #         out_channels=features,
+                    #         kernel_size=3,
+                    #         padding=1,
+                    #         bias=False,
+                    #     ),
+                    # ),
+                    # (name + "norm2", nn.BatchNorm3d(num_features=features)),
+                    # (name + "tanh2", nn.Tanh()),
+                ]
+            )
+        )
+    
+    def count_params(self):
+        c = 0
+        for p in self.parameters():
+            c += reduce(operator.mul, list(p.size()))
+
+        return c
+  
+# %%
+
+>>>>>>> master
 ################################################################
 # fourier layer
 ################################################################
@@ -497,18 +588,36 @@ class SimpleBlock2d(nn.Module):
         self.conv1 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
         self.conv2 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
         self.conv3 = SpectralConv2d_fast(self.width, self.width, self.modes1, self.modes2)
+<<<<<<< HEAD
         self.w0 = nn.Conv3d(self.width, self.width, 1)
         self.w1 = nn.Conv3d(self.width, self.width, 1)
         self.w2 = nn.Conv3d(self.width, self.width, 1)
         self.w3 = nn.Conv3d(self.width, self.width, 1)
+=======
+        # self.w0 = nn.Conv3d(self.width, self.width, 1)
+        # self.w1 = nn.Conv3d(self.width, self.width, 1)
+        # self.w2 = nn.Conv3d(self.width, self.width, 1)
+        # self.w3 = nn.Conv3d(self.width, self.width, 1)
+        self.w0 = UNet3d(self.width, self.width)
+        self.w1 = UNet3d(self.width, self.width)
+        self.w2 = UNet3d(self.width, self.width)
+        self.w3 = UNet3d(self.width, self.width)
+>>>>>>> master
         self.w00 = nn.Conv1d(self.width, self.width, 1)
         self.w11 = nn.Conv1d(self.width, self.width, 1)
         self.w22 = nn.Conv1d(self.width, self.width, 1)
         self.w33 = nn.Conv1d(self.width, self.width, 1)
+<<<<<<< HEAD
         # self.bn0 = torch.nn.BatchNorm3d(self.width)
         # self.bn1 = torch.nn.BatchNorm3d(self.width)
         # self.bn2 = torch.nn.BatchNorm3d(self.width)
         # self.bn3 = torch.nn.BatchNorm3d(self.width)
+=======
+        self.bn0 = torch.nn.BatchNorm3d(self.width)
+        self.bn1 = torch.nn.BatchNorm3d(self.width)
+        self.bn2 = torch.nn.BatchNorm3d(self.width)
+        self.bn3 = torch.nn.BatchNorm3d(self.width)
+>>>>>>> master
         
 
         self.fc1 = nn.Linear(self.width, 128)
@@ -520,6 +629,7 @@ class SimpleBlock2d(nn.Module):
 
       x = self.fc0(x)
       x = x.permute(0, 4, 1, 2, 3)
+<<<<<<< HEAD
 
       x1 = self.conv0(x)
       x2 = self.w0(x)
@@ -547,6 +657,56 @@ class SimpleBlock2d(nn.Module):
       x3 = self.w33(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
     #   x = self.bn3(x1 + x2 + x3)
       x = x1 + x2 + x3
+=======
+      
+      x1 = torch.zeros(x.shape).to(device)
+      for var in range(num_vars):
+        x1 += self.conv0(x[:, :, var:var+1,:,:])
+    #   x1 = self.conv0(x)
+      x2 = self.w0(x)
+    #   x3 = self.w00(x)
+      x3 = self.w00(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
+    #   x = x1 + self.bn0(x2) + x3
+      x = self.bn0(x1 + x2 + x3)
+    #   x = x1 + x2 + x3
+      x = F.gelu(x)
+      
+      x1 = torch.zeros(x.shape).to(device)
+      for var in range(num_vars):
+        x1 += self.conv1(x[:, :, var:var+1,:,:])
+    #   x1 = self.conv1(x)
+      x2 = self.w1(x)
+      x3 = self.w11(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
+    #   x3 = self.w11(x)
+    #   x = x1 + self.bn1(x2) + x3
+      x = self.bn1(x1 + x2 + x3)
+    #   x = x1 + x2 + x3
+      x = F.gelu(x)
+
+      x1 = torch.zeros(x.shape).to(device)
+      for var in range(num_vars):
+        x1 += self.conv2(x[:, :, var:var+1,:,:])
+    #   x1 = self.conv2(x)
+      x2 = self.w2(x)
+      x3 = self.w22(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
+    #   x3 = self.w22(x)
+
+    #   x = x1 + self.bn2(x2) + x3
+      x = self.bn2(x1 + x2 + x3)
+    #   x = x1 + x2 + x3
+      x = F.gelu(x)
+
+      x1 = torch.zeros(x.shape).to(device)
+      for var in range(num_vars):
+        x1 += self.conv3(x[:, :, var:var+1,:,:])
+    #   x1 = self.conv3(x)
+      x2 = self.w3(x)
+      x3 = self.w33(x.view(batchsize, self.width, -1)).view(batchsize, self.width, num_vars, size_x, size_y)
+    #   x3 = self.w33(x)
+    #   x = x1 + self.bn3(x2) + x3
+      x = self.bn3(x1 + x2 + x3)
+    #   x = x1 + x2 + x3
+>>>>>>> master
 
       x = x.permute(0, 2, 3, 4, 1)
       x = self.fc1(x)
@@ -701,16 +861,27 @@ optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
 
 
+<<<<<<< HEAD
 # myloss = LpLoss(size_average=False)
 myloss = torch.nn.MSELoss()
+=======
+myloss = LpLoss(size_average=False)
+# myloss = torch.nn.MSELoss()
+>>>>>>> master
 gridx = gridx.to(device)
 gridy = gridy.to(device)
 
 # %%
 
 epochs = configuration['Epochs']
+<<<<<<< HEAD
 y_normalizer.cuda()
 
+=======
+# y_normalizer.cuda()
+
+# %%
+>>>>>>> master
 start_time = time.time()
 for ep in tqdm(range(epochs)):
     model.train()

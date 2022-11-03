@@ -13,6 +13,7 @@ FNO 2d time on RBB Camera Data
 
 # %%
 import wandb
+<<<<<<< HEAD
 configuration = {"Case": 'RBB Camera - Moved',
                  "Calibration": 'Calcam',
                  "Epochs": 100,
@@ -20,6 +21,17 @@ configuration = {"Case": 'RBB Camera - Moved',
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
                  "Scheduler Step": 100 ,
+=======
+configuration = {
+                "Case": 'RBB Camera',
+                #  "Case": 'RBB Camera - Moved',
+                 "Calibration": 'Arbitrary',
+                 "Epochs": 500,
+                 "Batch Size": 2,
+                 "Optimizer": 'Adam',
+                 "Learning Rate": 0.005,
+                 "Scheduler Step": 100,
+>>>>>>> master
                  "Scheduler Gamma": 0.5,
                  "Activation": 'ReLU',
                  "Normalisation Strategy": 'Min-Max',
@@ -32,8 +44,13 @@ configuration = {"Case": 'RBB Camera - Moved',
                  "Resolution":1, 
                  "Noise":0.0}
 
+<<<<<<< HEAD
 run = wandb.init(project='FNO',
                  notes='',
+=======
+run = wandb.init(project='FNO-Camera',
+                 notes='Removed Batchnorm',
+>>>>>>> master
                  config=configuration,
                  mode='online')
 
@@ -281,8 +298,13 @@ class AddGaussianNoise(object):
         self.mean = self.mean.cpu()
         self.std = self.std.cpu()
 
+<<<<<<< HEAD
 additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
 additive_noise.cuda()
+=======
+# additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
+# additive_noise.cuda()
+>>>>>>> master
 
 # %%
 
@@ -388,6 +410,10 @@ class SimpleBlock2d(nn.Module):
         self.modes1 = modes1
         self.modes2 = modes2
         self.width = width
+<<<<<<< HEAD
+=======
+        # self.fc0 = nn.Linear(T_in, self.width)
+>>>>>>> master
         self.fc0 = nn.Linear(T_in+2, self.width)
         # input channel is 12: the solution of the previous 10 timesteps + 2 locations (u(t-10, x, y), ..., u(t-1, x, y),  x, y)
 
@@ -399,10 +425,17 @@ class SimpleBlock2d(nn.Module):
         self.w1 = nn.Conv1d(self.width, self.width, 1)
         self.w2 = nn.Conv1d(self.width, self.width, 1)
         self.w3 = nn.Conv1d(self.width, self.width, 1)
+<<<<<<< HEAD
         self.bn0 = torch.nn.BatchNorm2d(self.width)
         self.bn1 = torch.nn.BatchNorm2d(self.width)
         self.bn2 = torch.nn.BatchNorm2d(self.width)
         self.bn3 = torch.nn.BatchNorm2d(self.width)
+=======
+        # self.bn0 = torch.nn.BatchNorm2d(self.width)
+        # self.bn1 = torch.nn.BatchNorm2d(self.width)
+        # self.bn2 = torch.nn.BatchNorm2d(self.width)
+        # self.bn3 = torch.nn.BatchNorm2d(self.width)
+>>>>>>> master
 
 
         self.fc1 = nn.Linear(self.width, 128)
@@ -417,6 +450,7 @@ class SimpleBlock2d(nn.Module):
 
       x1 = self.conv0(x)
       x2 = self.w0(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+<<<<<<< HEAD
       x = self.bn0(x1 + x2)
       x = F.relu(x)
       x1 = self.conv1(x)
@@ -431,6 +465,29 @@ class SimpleBlock2d(nn.Module):
       x2 = self.w3(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
       x = self.bn3(x1 + x2)
 
+=======
+    #   x = self.bn0(x1 + x2)
+      x = x1 + x2 
+      x = F.relu(x)
+
+      x1 = self.conv1(x)
+      x2 = self.w1(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn1(x1 + x2)
+      x = x1 + x2 
+      x = F.relu(x)
+
+      x1 = self.conv2(x)
+      x2 = self.w2(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn2(x1 + x2)
+      x = x1 + x2 
+      x = F.relu(x)
+
+      x1 = self.conv3(x)
+      x2 = self.w3(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn3(x1 + x2)
+      x = x1+x2 
+      x = F.relu(x)
+>>>>>>> master
 
       x = x.permute(0, 2, 3, 1)
       x = self.fc1(x)
@@ -473,6 +530,7 @@ class Net2d(nn.Module):
 #  30055 - 30430 : Initial RBB Camera Data
 #  29920 - 29970 : moved RBB Camera Data
 
+<<<<<<< HEAD
 
 # data =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/rbb_30055_30430.npy')
 # data_calib =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/Calibrations/rbb_rz_pos_30055_30430.npz')
@@ -488,6 +546,90 @@ data_calib =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/Calibrations/rbb_r
 res = configuration['Resolution']
 u_sol = data.astype(np.float32)[:,:,::res, ::res]
 
+=======
+if configuration['Case'] == 'RBB Camera':
+
+    data =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/rbb_30055_30430.npy')
+    data_calib =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/Calibrations/rbb_rz_pos_30055_30430.npz')
+
+elif configuration['Case'] == 'RBB Camera - Moved':
+
+    data =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/rbb_29920_29970.npy')
+    data_calib =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/Calibrations/rbb_rz_pos_29920_29970.npz')
+
+
+
+# %%
+res = configuration['Resolution']
+gridx = data_calib['r_pos'][::res, ::res]
+gridy = data_calib['z_pos'][::res, ::res]
+u_sol = data.astype(np.float32)[:,:,::res, ::res]
+np.random.shuffle(u_sol)
+
+# %%
+# #RBF Interpolation  to a Uniform Grid 
+# from scipy.interpolate import RBFInterpolator
+
+# temp_x = gridx.flatten()
+# temp_y = gridy.flatten()
+
+# temp_X = np.stack((temp_x, temp_y)).T
+# grid = np.mgrid[0.5:1.5:448j, -1:1:640j][:, ::res,]
+# this = u_sol[0,0].flatten()
+# grid_flat = grid.reshape(2, -1).T
+# uflat = RBFInterpolator(temp_X, this)(grid_flat)
+
+
+# %%
+
+# # %%
+# from scipy.interpolate import griddata
+# #Interpolating to a unform grid. 
+# temp_x = gridx.flatten()
+# temp_y = gridy.flatten()
+# temp_xy = np.stack((temp_x, temp_y), 1)
+
+# ngridx = 480
+# ngridy = 640 
+# xi = np.linspace(np.min(gridx), np.max(gridx), ngridx)
+# yi = np.linspace(np.min(gridy), np.max(gridy), ngridy)
+# grid_x, grid_y  = np.meshgrid(xi, yi)
+
+# # grid_x, grid_y = np.mgrid[np.min(gridx):np.max(gridx):480j, np.min(gridy):np.max(gridy):640j]
+
+# # %%
+
+# u_temp = []
+# for ii in tqdm(range(len(u_sol))):
+#     u_val = u_sol[ii]
+#     temp = []
+#     for jj in range(len(u_val)):
+#       temp.append(griddata(temp_xy, u_val[jj].flatten(), (grid_x, grid_y), method='cubic'))
+#     u_temp.append(np.asarray(temp))
+
+# gridx = grid_x
+# gridy = grid_y
+# u_sol = np.asarray(u_temp)
+
+# if configuration['Case'] == 'RBB Camera':
+#     np.save('rbb_30055_30430_uniform', u_sol)
+
+# elif configuration['Case'] == 'RBB Camera - Moved':
+#     np.save('rbb_29920_29970_uniform', u_sol)
+
+# # %%
+# if configuration['Case'] == 'RBB Camera':
+#     u_sol = np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/rbb_30055_30430_uniform.npy')
+
+# elif configuration['Case'] == 'RBB Camera - Moved':
+#     u_sol = np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/rbb_29920_29970_uniform.npy')
+
+# u_sol = u_sol.astype(np.float32)
+# gridx = grid_x
+# gridy = grid_y
+
+# %%
+>>>>>>> master
 grid_size_x = u_sol.shape[2]
 grid_size_y = u_sol.shape[3]
 
@@ -530,10 +672,17 @@ train_u = u[:ntrain,:,:,T_in:T+T_in]
 test_a = u[-ntest:,:,:,:T_in]
 test_u = u[-ntest:,:,:,T_in:T+T_in]
 
+<<<<<<< HEAD
 print(train_u.shape)
 print(test_u.shape)
 
 
+=======
+
+print(train_u.shape)
+print(test_u.shape)
+
+>>>>>>> master
 # %%
 # a_normalizer = UnitGaussianNormalizer(train_a)
 a_normalizer = RangeNormalizer(train_a)
@@ -550,6 +699,7 @@ train_u = y_normalizer.encode(train_u)
 train_a = train_a.reshape(ntrain,S_x,S_y,T_in)
 test_a = test_a.reshape(ntest,S_x,S_y,T_in)
 
+<<<<<<< HEAD
 '''
 #Using arbitrary R and Z positions sampled uniformly within a specified domain range. 
 # pad the location (x,y)
@@ -565,6 +715,24 @@ gridy = gridy.reshape(1, 1, S_y, 1).repeat([1, S_x, 1, 1])
 #Using the calibrated R and Z positions averaged over the time and shots. 
 gridx = data_calib['r_pos'][::res, ::res]
 gridy = data_calib['z_pos'][::res, ::res]
+=======
+
+# Using arbitrary R and Z positions sampled uniformly within a specified domain range. 
+# pad the location (x,y)
+x = np.linspace(-1.5, 1.5, 448)[::res]
+# x = np.linspace(0, 1, 448)[::res]
+gridx = torch.tensor(x, dtype=torch.float)
+gridx = gridx.reshape(1, S_x, 1, 1).repeat([1, 1, S_y, 1])
+
+y = np.linspace(-2.0, 2.0, 640)[::res]
+# y = np.linspace(0, 1*(640/448), 640)[::res]
+gridy = torch.tensor(y, dtype=torch.float)
+gridy = gridy.reshape(1, 1, S_y, 1).repeat([1, S_x, 1, 1])
+
+
+#Using the calibrated R and Z positions averaged over the time and shots. 
+
+>>>>>>> master
 gridx = torch.tensor(gridx, dtype=torch.float)
 gridy = torch.tensor(gridy, dtype=torch.float)
 gridx = gridx.reshape(1, S_x, S_y, 1)
@@ -575,8 +743,11 @@ gridy = gridy.reshape(1, S_x, S_y, 1)
 train_a = torch.cat((train_a, gridx.repeat([ntrain,1,1,1]), gridy.repeat([ntrain,1,1,1])), dim=-1)
 test_a = torch.cat((test_a, gridx.repeat([ntest,1,1,1]), gridy.repeat([ntest,1,1,1])), dim=-1)
 
+<<<<<<< HEAD
 gridx = gridx.to(device)
 gridy = gridy.to(device)
+=======
+>>>>>>> master
 
 train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_a, train_u), batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(test_a, test_u), batch_size=batch_size, shuffle=False)
@@ -614,6 +785,10 @@ gridy = gridy.to(device)
 epochs = configuration['Epochs']
 y_normalizer.cuda()
 
+<<<<<<< HEAD
+=======
+# %%
+>>>>>>> master
 start_time = time.time()
 for ep in tqdm(range(epochs)):
     model.train()
@@ -624,7 +799,11 @@ for ep in tqdm(range(epochs)):
         loss = 0
         xx = xx.to(device)
         yy = yy.to(device)
+<<<<<<< HEAD
         xx = additive_noise(xx)
+=======
+        # xx = additive_noise(xx)
+>>>>>>> master
 
         for t in range(0, T, step):
             y = yy[..., t:t + step]
@@ -639,6 +818,12 @@ for ep in tqdm(range(epochs)):
             xx = torch.cat((xx[..., step:-2], im,
                             gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1)
 
+<<<<<<< HEAD
+=======
+            #No Grid Data 
+            # xx = torch.cat((xx[..., step:], im), dim=-1)
+
+>>>>>>> master
         train_l2_step += loss.item()
         l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
         train_l2_full += l2_full.item()
@@ -669,6 +854,12 @@ for ep in tqdm(range(epochs)):
                 xx = torch.cat((xx[..., step:-2], im,
                                 gridx.repeat([xx.shape[0], 1, 1, 1]), gridy.repeat([xx.shape[0], 1, 1, 1])), dim=-1)
 
+<<<<<<< HEAD
+=======
+                #No Grid Data 
+                # xx = torch.cat((xx[..., step:], im), dim=-1)
+
+>>>>>>> master
             pred = y_normalizer.decode(pred)
             
             test_l2_step += loss.item()
@@ -704,7 +895,12 @@ index = 0
 with torch.no_grad():
     for xx, yy in tqdm(test_loader):
         xx, yy = xx.to(device), yy.to(device)
+<<<<<<< HEAD
         xx = additive_noise(xx)
+=======
+        # xx = additive_noise(xx)
+        t1 = default_timer()
+>>>>>>> master
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             out = model(xx)
@@ -716,7 +912,15 @@ with torch.no_grad():
                 
             xx = torch.cat((xx[..., step:-2], out,
                                 gridx.repeat([1, 1, 1, 1]), gridy.repeat([1, 1, 1, 1])), dim=-1)
+<<<<<<< HEAD
         
+=======
+
+            #No Grid Data 
+            # xx = torch.cat((xx[..., step:], im), dim=-1)
+        t2 = default_timer()
+        print(t2-t1)
+>>>>>>> master
         pred = y_normalizer.decode(pred)
         pred_set[index]=pred
         index += 1
@@ -733,6 +937,7 @@ wandb.run.summary['Test Error'] = test_l2
 
 # %%
 idx = np.random.randint(0, ntest) 
+<<<<<<< HEAD
 u_field = test_u[idx].cpu().detach().numpy()
 
 fig = plt.figure(figsize=plt.figaspect(0.5))
@@ -765,3 +970,40 @@ ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm)
 wandb.log({"RBB Camera" : plt})
 wandb.run.finish()
 
+=======
+
+
+for idx in range(ntest):
+    u_field = test_u[idx].cpu().detach().numpy()
+
+    fig = plt.figure(figsize=plt.figaspect(0.5))
+    ax = fig.add_subplot(2,3,1)
+    ax.imshow(u_field[:,:,0], cmap=cm.coolwarm)
+    ax.title.set_text('Initial')
+    ax.set_ylabel('Camera')
+
+    ax = fig.add_subplot(2,3,2)
+    ax.imshow(u_field[:,:,int(T_out/2)], cmap=cm.coolwarm)
+    ax.title.set_text('Middle')
+
+    ax = fig.add_subplot(2,3,3)
+    ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm)
+    ax.title.set_text('Final')
+
+
+    u_field = pred_set[idx].cpu().detach().numpy()
+
+    ax = fig.add_subplot(2,3,4)
+    ax.imshow(u_field[:,:,0], cmap=cm.coolwarm)
+    ax.set_ylabel('FNO')
+
+    ax = fig.add_subplot(2,3,5)
+    ax.imshow(u_field[:,:,int(T_out/2)], cmap=cm.coolwarm)
+
+    ax = fig.add_subplot(2,3,6)
+    ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm)
+
+    wandb.log({"RBB Camera_" +str(idx) : plt})
+
+wandb.run.finish()
+>>>>>>> master

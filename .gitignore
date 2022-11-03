@@ -13,4 +13,11 @@ Models/
 *.out
 
 #Submission Script 
+<<<<<<< HEAD
 *.sh
+=======
+*.sh
+
+#Data
+*.npy
+>>>>>>> master

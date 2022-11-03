@@ -13,15 +13,25 @@ Code inspired from this paper : https://sciencedirect.com/science/article/abs/pi
 # %%
 import wandb
 configuration = {"Case": 'MHD',
+<<<<<<< HEAD
                 "Field": 'rho',
                  "Type": 'U-Net',
                  "Epochs": 1,
+=======
+                "Field": 'w',
+                 "Type": 'U-Net',
+                 "Epochs": 500,
+>>>>>>> master
                  "Batch Size": 5,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.001,
                  "Scheduler Step": 100 ,
                  "Scheduler Gamma": 0.5,
+<<<<<<< HEAD
                  "Activation": 'Tanh, Sigmoid',
+=======
+                 "Activation": 'Tanh',
+>>>>>>> master
                  "Normalisation Strategy": 'Min-Max. Single',
                  "Batch Normalisation": 'No',
                  "T_in": 20,    
@@ -36,11 +46,19 @@ configuration = {"Case": 'MHD',
 run = wandb.init(project='FNO-Benchmark',
                  notes='',
                  config=configuration,
+<<<<<<< HEAD
                  mode='disabled')
 
 run_id = wandb.run.id
 
 wandb.save('FNO_MHD.py')
+=======
+                 mode='online')
+
+run_id = wandb.run.id
+
+wandb.save('UNet_MHD.py')
+>>>>>>> master
 
 step = configuration['Step']
 
@@ -500,6 +518,10 @@ optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
 
 myloss = LpLoss(size_average=False)
+<<<<<<< HEAD
+=======
+myloss = torch.nn.MSELoss()
+>>>>>>> master
 
 # gridx = gridx.to(device)
 # gridy = gridy.to(device)
@@ -522,7 +544,11 @@ for ep in tqdm(range(epochs)):
 
         for t in range(0, T, step):
             y = yy[:, t:t + step, : , :]
+<<<<<<< HEAD
             im = model(xx)[0][0]
+=======
+            im = model(xx)
+>>>>>>> master
             loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
             if t == 0:
@@ -551,7 +577,11 @@ for ep in tqdm(range(epochs)):
 
             for t in range(0, T, step):
                 y = yy[:, t:t + step, : , :]
+<<<<<<< HEAD
                 im = model(xx)[0][0]
+=======
+                im = model(xx)
+>>>>>>> master
                 loss += myloss(im.reshape(batch_size, -1), y.reshape(batch_size, -1))
 
                 if t == 0:
@@ -593,12 +623,23 @@ pred_set = torch.zeros(test_u.shape)
 index = 0
 with torch.no_grad():
     for xx, yy in tqdm(test_loader):
+<<<<<<< HEAD
         loss = 0
         xx, yy = xx.to(device), yy.to(device)
         # xx = additive_noise(xx)
         for t in range(0, T, step):
             y = yy[:, t:t + step, : , :]
             out = model(xx)[0][0]
+=======
+        t1 = default_timer()
+        loss = 0
+        xx, yy = xx.to(device), yy.to(device)
+        t1 = default_timer()
+        # xx = additive_noise(xx)
+        for t in range(0, T, step):
+            y = yy[:, t:t + step, : , :]
+            out = model(xx)
+>>>>>>> master
             loss += myloss(out.reshape(1, -1), y.reshape(1, -1))
 
             if t == 0:
@@ -608,11 +649,19 @@ with torch.no_grad():
                 
             xx = torch.cat((xx[:, step:, :, :], out), dim=1)
 
+<<<<<<< HEAD
         
         # pred = y_normalizer.decode(pred)
         pred_set[index]=pred
         index += 1
     
+=======
+        t2 = default_timer()
+        # pred = y_normalizer.decode(pred)
+        pred_set[index]=pred
+        index += 1
+        print(t2-t1)   
+>>>>>>> master
 MSE_error = (pred_set - test_u_encoded).pow(2).mean()
 MAE_error = torch.abs(pred_set - test_u_encoded).mean()
 LP_error = loss / (ntest*T/step)

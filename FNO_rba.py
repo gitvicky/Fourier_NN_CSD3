@@ -15,11 +15,19 @@ FNO 2d time on RBA Camera Data
 import wandb
 configuration = {"Case": 'RBA Camera',
                  "Calibration": 'Calcam',
+<<<<<<< HEAD
                  "Epochs": 250,
                  "Batch Size": 3,
                  "Optimizer": 'Adam',
                  "Learning Rate": 0.01,
                  "Scheduler Step": 50 ,
+=======
+                 "Epochs": 500,
+                 "Batch Size": 4,
+                 "Optimizer": 'Adam',
+                 "Learning Rate": 0.005,
+                 "Scheduler Step": 50,
+>>>>>>> master
                  "Scheduler Gamma": 0.5,
                  "Activation": 'ReLU',
                  "Normalisation Strategy": 'Min-Max',
@@ -32,8 +40,13 @@ configuration = {"Case": 'RBA Camera',
                  "Resolution":1, 
                  "Noise":0.0}
 
+<<<<<<< HEAD
 run = wandb.init(project='FNO',
                  notes='',
+=======
+run = wandb.init(project='FNO-Camera',
+                 notes='Removed BN',
+>>>>>>> master
                  config=configuration,
                  mode='online')
 
@@ -281,7 +294,11 @@ class AddGaussianNoise(object):
         self.mean = self.mean.cpu()
         self.std = self.std.cpu()
 
+<<<<<<< HEAD
 additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
+=======
+# additive_noise = AddGaussianNoise(0.0, configuration['Noise'])
+>>>>>>> master
 # additive_noise.cuda()
 
 # %%
@@ -399,10 +416,17 @@ class SimpleBlock2d(nn.Module):
         self.w1 = nn.Conv1d(self.width, self.width, 1)
         self.w2 = nn.Conv1d(self.width, self.width, 1)
         self.w3 = nn.Conv1d(self.width, self.width, 1)
+<<<<<<< HEAD
         self.bn0 = torch.nn.BatchNorm2d(self.width)
         self.bn1 = torch.nn.BatchNorm2d(self.width)
         self.bn2 = torch.nn.BatchNorm2d(self.width)
         self.bn3 = torch.nn.BatchNorm2d(self.width)
+=======
+        # self.bn0 = torch.nn.BatchNorm2d(self.width)
+        # self.bn1 = torch.nn.BatchNorm2d(self.width)
+        # self.bn2 = torch.nn.BatchNorm2d(self.width)
+        # self.bn3 = torch.nn.BatchNorm2d(self.width)
+>>>>>>> master
 
 
         self.fc1 = nn.Linear(self.width, 128)
@@ -417,6 +441,7 @@ class SimpleBlock2d(nn.Module):
 
       x1 = self.conv0(x)
       x2 = self.w0(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+<<<<<<< HEAD
       x = self.bn0(x1 + x2)
       x = F.relu(x)
       x1 = self.conv1(x)
@@ -430,6 +455,28 @@ class SimpleBlock2d(nn.Module):
       x1 = self.conv3(x)
       x2 = self.w3(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
       x = self.bn3(x1 + x2)
+=======
+    #   x = self.bn0(x1 + x2)
+      x = x1+x2
+      x = F.relu(x)
+
+      x1 = self.conv1(x)
+      x2 = self.w1(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn1(x1 + x2)
+      x = x1+x2
+      x = F.relu(x)
+
+      x1 = self.conv2(x)
+      x2 = self.w2(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn2(x1 + x2)
+      x = x1+x2
+      x = F.relu(x)
+      
+      x1 = self.conv3(x)
+      x2 = self.w3(x.view(batchsize, self.width, -1)).view(batchsize, self.width, size_x, size_y)
+    #   x = self.bn3(x1 + x2)
+      x = x1+x2
+>>>>>>> master
 
 
       x = x.permute(0, 2, 3, 1)
@@ -472,6 +519,7 @@ class Net2d(nn.Module):
 # %%
 
 data =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/rba_30280_30360.npy')
+<<<<<<< HEAD
 data_calib =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/Calibrations/rba_rz_pos_30280_30360.npz')
 
 # data =  np.load(data_loc + '/Data/Cam_Data/rbb_fno_data.npy')
@@ -482,6 +530,54 @@ data_calib =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/Calibrations/rba_r
 res = configuration['Resolution']
 u_sol = data.astype(np.float32)[:,:,::res, ::res]
 
+=======
+data_2 = np.load(data_loc + '/Data/Cam_Data/rba_fno_data_2.npy')
+# data =  np.load(data_loc + '/Data/Cam_Data/rba_data_608x768.npy')
+data_calib =  np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/Calibrations/rba_rz_pos_30280_30360.npz')
+
+res = configuration['Resolution']
+gridx = data_calib['r_pos'][::res, ::res]
+gridy = data_calib['z_pos'][::res, ::res]
+u_sol = data.astype(np.float32)[:,:,::res, ::res]
+
+u_2_sol = data_2.astype(np.float32)[:,:,::res,::res]
+u_sol = np.vstack((u_sol, u_2_sol))
+
+np.random.shuffle(u_sol)
+
+# # %%
+# from scipy.interpolate import griddata
+# #Interpolating to a unform grid. 
+# temp_x = gridx.flatten()
+# temp_y = gridy.flatten()
+# temp_xy = np.stack((temp_x, temp_y), 1)
+
+# grid_x, grid_y = np.mgrid[np.min(gridx):np.max(gridx):400j, np.min(gridy):np.max(gridy):512j]
+
+# # %%
+
+# u_temp = []
+# for ii in tqdm(range(len(u_sol))):
+#     u_val = u_sol[ii]
+#     temp = []
+#     for jj in range(len(u_val)):
+#       temp.append(griddata(temp_xy, u_val[jj].flatten(), (grid_x, grid_y), method='cubic'))
+#     u_temp.append(np.asarray(temp))
+
+# gridx = grid_x
+# gridy = grid_y
+# u_sol = np.asarray(u_temp)
+
+# np.save('rba_30280_30360_uniform', u_sol)
+
+# # %%
+# u_sol = np.load(data_loc + '/Data/Cam_Data/Cleaned_Data/rba_30280_30360_uniform.npy')
+# gridx = grid_x
+# gridy = grid_y
+
+# %%
+
+>>>>>>> master
 grid_size_x = u_sol.shape[2]
 grid_size_y = u_sol.shape[3]
 
@@ -489,8 +585,13 @@ u = torch.from_numpy(u_sol)
 u = u.permute(0, 2, 3, 1)
 
 
+<<<<<<< HEAD
 ntrain = 45
 ntest = 5
+=======
+ntrain = 75
+ntest = 11
+>>>>>>> master
 batch_size_test = ntest 
 
 
@@ -542,6 +643,7 @@ test_u_norm = y_normalizer.encode(test_u)
 train_a = train_a.reshape(ntrain,S_x,S_y,T_in)
 test_a = test_a.reshape(ntest,S_x,S_y,T_in)
 
+<<<<<<< HEAD
 '''
 #Using arbitrary R and Z positions sampled uniformly within a specified domain range. 
 # pad the location (x,y)
@@ -557,6 +659,22 @@ gridy = gridy.reshape(1, 1, S_y, 1).repeat([1, S_x, 1, 1])
 #Using the calibrated R and Z positions averaged over the time and shots. 
 gridx = data_calib['r_pos'][::res, ::res]
 gridy = data_calib['z_pos'][::res, ::res]
+=======
+
+#Using arbitrary R and Z positions sampled uniformly within a specified domain range. 
+x = np.linspace(-1.0, -2.0, 400)[::res]
+# x = np.linspace(-1.0, -2.0, 608)[::res]
+gridx = torch.tensor(x, dtype=torch.float)
+gridx = gridx.reshape(1, S_x, 1, 1).repeat([1, 1, S_y, 1])
+
+y = np.linspace(0.0, 1.0, 512)[::res]
+# y = np.linspace(-1.0, 0.0, 768)[::res]
+gridy = torch.tensor(y, dtype=torch.float)
+gridy = gridy.reshape(1, 1, S_y, 1).repeat([1, S_x, 1, 1])
+
+
+#Using the calibrated R and Z positions averaged over the time and shots. 
+>>>>>>> master
 gridx = torch.tensor(gridx, dtype=torch.float)
 gridy = torch.tensor(gridy, dtype=torch.float)
 gridx = gridx.reshape(1, S_x, S_y, 1)
@@ -590,8 +708,11 @@ model.to(device)
 
 # wandb.watch(model, log='all')
 
+<<<<<<< HEAD
 
 
+=======
+>>>>>>> master
 optimizer = torch.optim.Adam(model.parameters(), lr=configuration['Learning Rate'], weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=configuration['Scheduler Step'], gamma=configuration['Scheduler Gamma'])
 
@@ -616,8 +737,11 @@ for ep in tqdm(range(epochs)):
         loss = 0
         xx = xx.to(device)
         yy = yy.to(device)
+<<<<<<< HEAD
         # xx = additive_noise(xx)
 
+=======
+>>>>>>> master
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             im = model(xx)
@@ -628,8 +752,14 @@ for ep in tqdm(range(epochs)):
             else:
                 pred = torch.cat((pred, im), -1)
 
+<<<<<<< HEAD
             xx = torch.cat((xx[..., step:-2], im,
                             gridx.repeat([batch_size, 1, 1, 1]), gridy.repeat([batch_size, 1, 1, 1])), dim=-1)
+=======
+
+            xx = torch.cat((xx[..., step:-2], im,
+                                gridx.repeat([xx.shape[0], 1, 1, 1]), gridy.repeat([xx.shape[0], 1, 1, 1])), dim=-1)
+>>>>>>> master
 
         train_l2_step += loss.item()
         l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
@@ -683,7 +813,10 @@ train_time = time.time() - start_time
 torch.save(model.state_dict(), model_loc + '/Models/FNO_rba_'+run_id + '.pth')
 wandb.save(model_loc + '/Models/FNO_rba_'+run_id + '.pth')
 
+<<<<<<< HEAD
 # model = torch.load('NS_FNO_2d_time.pth', map_location=torch.device('cpu'))
+=======
+>>>>>>> master
 
 # %%
 
@@ -698,7 +831,10 @@ index = 0
 with torch.no_grad():
     for xx, yy in tqdm(test_loader):
         xx, yy = xx.to(device), yy.to(device)
+<<<<<<< HEAD
         # xx = additive_noise(xx)
+=======
+>>>>>>> master
         for t in range(0, T, step):
             y = yy[..., t:t + step]
             out = model(xx)
@@ -731,6 +867,7 @@ wandb.run.summary['Test Error'] = test_l2
 
 # %%
 idx = np.random.randint(0, ntest) 
+<<<<<<< HEAD
 idx = 0
 print(idx)
 u_field = test_u[idx].cpu().detach().numpy()
@@ -770,3 +907,43 @@ wandb.run.finish()
 
 
 # %%
+=======
+
+
+for idx in range(ntest):
+    u_field = test_u[idx].cpu().detach().numpy()
+
+    fig = plt.figure(figsize=plt.figaspect(0.5))
+    ax = fig.add_subplot(2,3,1)
+    ax.imshow(u_field[:,:,0], cmap=cm.coolwarm)
+    ax.title.set_text('Initial')
+    ax.set_ylabel('Camera')
+
+    ax = fig.add_subplot(2,3,2)
+    ax.imshow(u_field[:,:,int(T_out/2)], cmap=cm.coolwarm)
+    ax.title.set_text('Middle')
+
+    ax = fig.add_subplot(2,3,3)
+    ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm)
+    ax.title.set_text('Final')
+
+
+    u_field = pred_set[idx].cpu().detach().numpy()
+
+    ax = fig.add_subplot(2,3,4)
+    ax.imshow(u_field[:,:,0], cmap=cm.coolwarm)
+    ax.set_ylabel('FNO')
+
+    ax = fig.add_subplot(2,3,5)
+    ax.imshow(u_field[:,:,int(T_out/2)], cmap=cm.coolwarm)
+
+    ax = fig.add_subplot(2,3,6)
+    ax.imshow(u_field[:,:,-1], cmap=cm.coolwarm)
+
+    wandb.log({"RBA Camera_" +str(idx) : plt})
+
+wandb.run.finish()
+
+
+# %%
+>>>>>>> master
