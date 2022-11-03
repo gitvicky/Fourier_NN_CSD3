@@ -1,0 +1,19 @@
+#wandb files
+wandb/
+
+#Saved Models
+Models/
+
+#Methods in Testing 
+# F_LSTM/
+# F_RNN/
+
+#Machine Output files
+*.file
+*.out
+
+#Submission Script 
+*.sh
+
+#Data
+*.npy
